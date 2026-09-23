@@ -1665,7 +1665,33 @@ async fn run_sampling_request(
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
                     }
-                    return Err(err);
+                    let Some(resets_at) = e
+                        .resets_at
+                        .filter(|_| turn_context.config.auto_resume_on_usage_limit)
+                    else {
+                        return Err(err);
+                    };
+                    if original_input.is_none() {
+                        original_input = Some(prompt.input);
+                    }
+                    // Backend quota state can trail the advertised reset. The margin
+                    // also prevents a stale, already-past reset from spinning on 429s.
+                    let wait_duration = resets_at
+                        .signed_duration_since(chrono::Utc::now())
+                        .to_std()
+                        .unwrap_or_default()
+                        .saturating_add(std::time::Duration::from_secs(5));
+                    info!(%resets_at, wait_seconds = wait_duration.as_secs(), "Waiting for usage limit reset");
+                    tokio::select! {
+                        biased;
+                        _ = cancellation_token.cancelled() => {
+                            info!("Usage limit wait cancelled");
+                            return Err(CodexErr::TurnAborted);
+                        }
+                        _ = tokio::time::sleep(wait_duration) => {}
+                    }
+                    info!("Usage limit reset wait complete; retrying sampling request");
+                    continue;
                 }
                 _ => err,
             },

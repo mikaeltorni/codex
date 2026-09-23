@@ -6452,6 +6452,10 @@
       "default": null,
       "description": "Machine-local realtime audio device preferences used by realtime voice."
     },
+    "auto_resume_on_usage_limit": {
+      "description": "Retry a usage-limited sampling request in the same turn after its reset time. Defaults to false; turns without a reset timestamp still fail immediately.",
+      "type": "boolean"
+    },
     "auto_review": {
       "allOf": [
         {
