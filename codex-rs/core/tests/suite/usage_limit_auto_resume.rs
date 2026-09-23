@@ -176,3 +176,53 @@ async fn missing_reset_timestamp_keeps_terminal_usage_limit_error() -> anyhow::R
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disabled_auto_resume_keeps_terminal_usage_limit_error() -> anyhow::Result<()> {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+            "error": {
+                "type": "usage_limit_reached",
+                "message": "limit reached",
+                "resets_at": Utc::now().timestamp() + 3600,
+                "plan_type": "pro"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let test = test_codex()
+        .with_config(|config| {
+            assert!(!config.auto_resume_on_usage_limit);
+            config.model_provider.request_max_retries = Some(0);
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    test.codex
+        .start_or_steer_turn(codex_core::TurnInputRequest::user_input(vec![
+            codex_protocol::user_input::UserInput::Text {
+                text: "do the task".into(),
+                text_elements: Vec::new(),
+            },
+        ]))
+        .await?;
+    let error = wait_for_event(&test.codex, |event| matches!(event, EventMsg::Error(_))).await;
+    let EventMsg::Error(error) = error else {
+        unreachable!();
+    };
+    assert!(error.message.contains("limit"));
+    assert_eq!(
+        server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|request| request.url.path() == "/v1/responses")
+            .count(),
+        1
+    );
+    Ok(())
+}
