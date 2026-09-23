@@ -35,6 +35,8 @@ pub(crate) struct ActionableBanner {
     pub(crate) initial_selected_idx: Option<usize>,
     pub(crate) dismissal: BannerDismissal,
     pub(crate) view_id: Option<&'static str>,
+    /// Keep an informational banner visible while a task is running.
+    pub(crate) visible_while_task_running: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -47,6 +49,7 @@ pub(crate) enum BannerDismissal {
 pub(super) struct InlineBanner {
     content: InlineBannerContent,
     dismissal: BannerDismissal,
+    pub(super) visible_while_task_running: bool,
     shown: Cell<bool>,
     // Current visibility is separate from whether this banner has ever been shown.
     pub(super) visible: Cell<bool>,
@@ -167,6 +170,7 @@ impl BottomPane {
     pub(crate) fn set_inline_banner(&mut self, banner: Option<ActionableBanner>) {
         self.inline_banner = banner.map(|banner| {
             let dismissal = banner.dismissal;
+            let visible_while_task_running = banner.visible_while_task_running;
             let has_actions = !banner.actions.is_empty();
             let mut params: SelectionViewParams = banner.into();
             params.header_gap = 0;
@@ -198,6 +202,7 @@ impl BottomPane {
                     }
                 },
                 dismissal,
+                visible_while_task_running,
                 shown: Cell::new(false),
                 visible: Cell::new(false),
                 dismissed: false,

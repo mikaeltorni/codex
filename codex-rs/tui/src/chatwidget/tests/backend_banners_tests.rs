@@ -259,6 +259,39 @@ async fn owner_notification_completion_cannot_cross_account_change() {
 }
 
 #[tokio::test]
+async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    let original = banner_response(Some("inline"), json!([]));
+    chat.update_backend_banner(&original);
+    assert!(render_bottom_popup(&chat, /*width*/ 70).contains("Selected model usage exhausted"));
+
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    let countdown = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(countdown.contains("Usage limit reached"), "{countdown}");
+    assert!(
+        countdown.contains("Auto-continue is enabled"),
+        "{countdown}"
+    );
+
+    let mut updated = original;
+    updated.rate_limit_upsell.as_mut().unwrap()["title"] = json!("Updated account limit");
+    chat.update_backend_banner(&updated);
+    let countdown_after_account_update = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(
+        countdown_after_account_update.contains("Auto-continue is enabled"),
+        "{countdown_after_account_update}"
+    );
+    assert!(!countdown_after_account_update.contains("Updated account limit"));
+
+    chat.update_usage_limit_wait(None);
+    chat.bottom_pane.set_task_running(false);
+    let restored = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(restored.contains("Updated account limit"), "{restored}");
+    assert!(!restored.contains("Auto-continue is enabled"));
+}
+
+#[tokio::test]
 async fn backend_banner_new_turn_dismisses_only_shown_dismissible_content() {
     for (presentation, show_before_submit) in [
         (None, true),

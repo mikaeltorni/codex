@@ -1362,6 +1362,12 @@ pub enum EventMsg {
     /// Provider-owned authentication recovery has completed for the current turn.
     AuthRecoveryCompleted(AuthRecoveryEvent),
 
+    /// The current turn is waiting to retry after a usage limit reset.
+    UsageLimitWaitStarted(UsageLimitWaitEvent),
+
+    /// The current turn stopped waiting to retry after a usage limit reset.
+    UsageLimitWaitEnded,
+
     /// Warning issued by the guardian automatic approval reviewer.
     GuardianWarning(WarningEvent),
 
@@ -2093,6 +2099,13 @@ pub struct AuthRecoveryEvent {
     pub provider: String,
     /// User-facing description of the authentication recovery stage.
     pub message: String,
+}
+
+/// Timestamp for the next sampling retry after a usage-limit reset.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct UsageLimitWaitEvent {
+    /// Unix timestamp in milliseconds for the next sampling retry.
+    pub retry_at_ms: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
