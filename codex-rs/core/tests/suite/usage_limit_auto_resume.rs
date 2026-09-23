@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 use chrono::Utc;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
+use codex_protocol::protocol::UsageLimitWaitEvent;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
@@ -116,11 +117,23 @@ async fn cancelling_quota_wait_aborts_without_another_request() -> anyhow::Resul
             },
         ]))
         .await?;
+    let retry_at_ms = match wait_for_event(&test.codex, |event| {
+        matches!(
+            event,
+            EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms: _ })
+        )
+    })
+    .await
+    {
+        EventMsg::UsageLimitWaitStarted(event) => event.retry_at_ms,
+        _ => unreachable!(),
+    };
+    assert!(retry_at_ms > Utc::now().timestamp_millis());
+    test.codex.submit(Op::Interrupt).await?;
     wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::TokenCount(_))
+        matches!(event, EventMsg::UsageLimitWaitEnded)
     })
     .await;
-    test.codex.submit(Op::Interrupt).await?;
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnAborted(_))
     })

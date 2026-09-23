@@ -150,6 +150,32 @@ fn hidden_banner_preserves_input_before_render_and_after_resize() {
 }
 
 #[test]
+fn persistent_status_banner_stays_visible_while_task_running() {
+    let (tx, _rx) = unbounded_channel();
+    let mut pane = test_pane(AppEventSender::new(tx));
+    pane.set_inline_banner(Some(ActionableBanner {
+        title: "Usage limit reached".into(),
+        description: "Auto-continue is enabled. Resuming in 5m 00s.".into(),
+        dismissal: BannerDismissal::Persistent,
+        visible_while_task_running: true,
+        ..Default::default()
+    }));
+    pane.set_task_running(true);
+
+    let width = 70;
+    let area = Rect::new(
+        /*x*/ 0,
+        /*y*/ 0,
+        width,
+        pane.desired_height(width),
+    );
+    let rendered = render_snapshot(&pane, area);
+
+    assert!(rendered.contains("Usage limit reached"), "{rendered}");
+    assert!(rendered.contains("Resuming in 5m 00s"), "{rendered}");
+}
+
+#[test]
 fn partially_clipped_banner_preserves_hidden_action_shortcuts() {
     let (tx, mut rx) = unbounded_channel();
     let mut pane = test_pane_with_disable_paste_burst(

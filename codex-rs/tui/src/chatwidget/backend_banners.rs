@@ -376,6 +376,9 @@ impl ChatWidget {
     }
 
     fn observe_backend_banner_view(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
         let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
         self.backend_banner_state.shown |= shown;
         self.backend_banner_state.dismissed |= dismissed;
@@ -386,6 +389,9 @@ impl ChatWidget {
     }
 
     pub(super) fn refresh_backend_banner_visibility(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
         let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
             // Keep recovery actions available while switching, including on older servers
             // without settings/update. The copy below describes the accepted model only.
@@ -484,6 +490,23 @@ impl ChatWidget {
         {
             self.maybe_show_pending_rate_limit_prompt();
         }
+    }
+
+    /// Reapply a normal inline account banner after the usage-wait notice released the composer.
+    pub(super) fn restore_backend_banner_after_usage_wait(&mut self) {
+        self.observe_backend_banner_view();
+        let reserve_banner_has_modal =
+            self.backend_banner_state
+                .banner
+                .as_ref()
+                .is_some_and(|banner| {
+                    banner.banner_type == LUNA_RESERVE_BANNER && self.bottom_pane.has_active_modal()
+                });
+        if reserve_banner_has_modal {
+            return;
+        }
+        self.backend_banner_state.presented = None;
+        self.refresh_backend_banner_visibility();
     }
 
     pub(super) fn sync_backend_banner_view(&mut self) {
