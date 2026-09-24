@@ -3,7 +3,7 @@ source: tui/src/bottom_pane/tests/actionable_banner_tests.rs
 expression: snapshot
 ---
 
-  Usage limit reached
+  Usage limit reached (Auto-continue is enabled)
 
 • Working (0s • esc to interrupt)
 

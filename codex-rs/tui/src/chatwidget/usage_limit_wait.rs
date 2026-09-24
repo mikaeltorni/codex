@@ -41,7 +41,7 @@ impl ChatWidget {
         self.bottom_pane
             .set_status_resume_countdown(Some(format_remaining_time(retry_at_ms)));
         self.bottom_pane.set_inline_banner(Some(ActionableBanner {
-            title: "Usage limit reached".to_string(),
+            title: "Usage limit reached (Auto-continue is enabled)".to_string(),
             dismissal: BannerDismissal::Persistent,
             view_id: Some(USAGE_LIMIT_WAIT_VIEW_ID),
             visible_while_task_running: true,

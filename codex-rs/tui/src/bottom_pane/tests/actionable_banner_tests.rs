@@ -154,7 +154,7 @@ fn persistent_status_banner_stays_visible_while_task_running() {
     let (tx, _rx) = unbounded_channel();
     let mut pane = test_pane(AppEventSender::new(tx));
     pane.set_inline_banner(Some(ActionableBanner {
-        title: "Usage limit reached".into(),
+        title: "Usage limit reached (Auto-continue is enabled)".into(),
         dismissal: BannerDismissal::Persistent,
         visible_while_task_running: true,
         ..Default::default()
@@ -170,7 +170,10 @@ fn persistent_status_banner_stays_visible_while_task_running() {
     );
     let rendered = render_snapshot(&pane, area);
 
-    assert!(rendered.contains("Usage limit reached"), "{rendered}");
+    assert!(
+        rendered.contains("Usage limit reached (Auto-continue is enabled)"),
+        "{rendered}"
+    );
     assert!(!rendered.contains("Resuming in"), "{rendered}");
     let snapshot = rendered
         .lines()
