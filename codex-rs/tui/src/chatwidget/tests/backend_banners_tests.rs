@@ -396,6 +396,40 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
 }
 
 #[tokio::test]
+async fn hiding_usage_wait_actions_keeps_reset_countdown_running() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.bottom_pane.set_task_running(true);
+    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+    chat.update_usage_limit_wait(Some(retry_at_ms));
+    let initial_tick = chat
+        .usage_limit_wait_next_tick
+        .expect("active wait should schedule a countdown refresh");
+
+    chat.dismiss_usage_limit_wait_banner();
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    assert_eq!(chat.usage_limit_wait_next_tick, Some(initial_tick));
+    let waiting = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
+    assert!(waiting.contains("Resuming in "), "{waiting}");
+
+    chat.refresh_usage_limit_wait_for_time_tick();
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    assert!(
+        chat.usage_limit_wait_next_tick
+            .is_some_and(|next_tick| next_tick > initial_tick)
+    );
+    let waiting_after_tick = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(
+        !waiting_after_tick.contains("Auto-continue is enabled"),
+        "{waiting_after_tick}"
+    );
+    assert!(
+        waiting_after_tick.contains("Resuming in "),
+        "{waiting_after_tick}"
+    );
+}
+
+#[tokio::test]
 async fn backend_banner_new_turn_dismisses_only_shown_dismissible_content() {
     for (presentation, show_before_submit) in [
         (None, true),
