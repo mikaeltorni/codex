@@ -155,7 +155,6 @@ fn persistent_status_banner_stays_visible_while_task_running() {
     let mut pane = test_pane(AppEventSender::new(tx));
     pane.set_inline_banner(Some(ActionableBanner {
         title: "Usage limit reached".into(),
-        description: "Auto-continue is enabled. Resuming in 5m 00s.".into(),
         dismissal: BannerDismissal::Persistent,
         visible_while_task_running: true,
         ..Default::default()
@@ -172,7 +171,13 @@ fn persistent_status_banner_stays_visible_while_task_running() {
     let rendered = render_snapshot(&pane, area);
 
     assert!(rendered.contains("Usage limit reached"), "{rendered}");
-    assert!(rendered.contains("Resuming in 5m 00s"), "{rendered}");
+    assert!(!rendered.contains("Resuming in"), "{rendered}");
+    let snapshot = rendered
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("persistent_status_banner_without_description", snapshot);
 }
 
 #[test]

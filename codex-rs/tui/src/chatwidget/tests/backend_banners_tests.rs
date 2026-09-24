@@ -269,17 +269,23 @@ async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner(
     chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
     let countdown = render_bottom_popup(&chat, /*width*/ 70);
     assert!(countdown.contains("Usage limit reached"), "{countdown}");
+    assert!(countdown.contains("Resuming in "), "{countdown}");
     assert!(
-        countdown.contains("Auto-continue is enabled"),
+        !countdown.contains("Auto-continue is enabled. Resuming in"),
         "{countdown}"
     );
+    assert!(!countdown.contains("Press Ctrl-C to stop"), "{countdown}");
 
     let mut updated = original;
     updated.rate_limit_upsell.as_mut().unwrap()["title"] = json!("Updated account limit");
     chat.update_backend_banner(&updated);
     let countdown_after_account_update = render_bottom_popup(&chat, /*width*/ 70);
     assert!(
-        countdown_after_account_update.contains("Auto-continue is enabled"),
+        countdown_after_account_update.contains("Resuming in "),
+        "{countdown_after_account_update}"
+    );
+    assert!(
+        !countdown_after_account_update.contains("Press Ctrl-C to stop"),
         "{countdown_after_account_update}"
     );
     assert!(!countdown_after_account_update.contains("Updated account limit"));
