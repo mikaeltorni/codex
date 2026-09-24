@@ -31,12 +31,15 @@ impl ChatWidget {
 
     fn refresh_usage_limit_wait_banner(&mut self) {
         let Some(retry_at_ms) = self.usage_limit_wait_retry_at_ms else {
+            self.bottom_pane.set_status_resume_countdown(None);
             self.bottom_pane.set_inline_banner(None);
             self.restore_backend_banner_after_usage_wait();
             self.request_redraw();
             return;
         };
 
+        self.bottom_pane
+            .set_status_resume_countdown(Some(format_remaining_time(retry_at_ms)));
         self.bottom_pane.set_inline_banner(Some(ActionableBanner {
             title: "Usage limit reached".to_string(),
             description: format!(
@@ -58,6 +61,10 @@ fn format_remaining_time(retry_at_ms: i64) -> String {
         .unwrap_or_default()
         .as_millis();
     let now_ms = i64::try_from(now_ms).unwrap_or(i64::MAX);
+    format_remaining_time_at(retry_at_ms, now_ms)
+}
+
+fn format_remaining_time_at(retry_at_ms: i64, now_ms: i64) -> String {
     let remaining_seconds = retry_at_ms.saturating_sub(now_ms).max(0) as u64 / 1000;
     format_remaining_seconds(remaining_seconds)
 }
@@ -87,5 +94,12 @@ mod tests {
         assert_eq!(format_remaining_seconds(7), "0m 07s");
         assert_eq!(format_remaining_seconds(3_661), "1h 01m 01s");
         assert_eq!(format_remaining_seconds(90_061), "1d 1h 01m 01s");
+    }
+
+    #[test]
+    fn countdown_decreases_when_refreshed_one_second_later() {
+        let retry_at_ms = 4_322_000;
+        assert_eq!(format_remaining_time_at(retry_at_ms, 1_000), "1h 12m 01s");
+        assert_eq!(format_remaining_time_at(retry_at_ms, 2_000), "1h 12m 00s");
     }
 }

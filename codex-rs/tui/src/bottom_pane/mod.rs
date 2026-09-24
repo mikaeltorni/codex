@@ -1212,6 +1212,17 @@ impl BottomPane {
         false
     }
 
+    /// Set the status-row countdown shown while a turn waits for usage to reset.
+    pub(crate) fn set_status_resume_countdown(&mut self, countdown: Option<String>) {
+        if countdown.is_some() {
+            self.ensure_status_indicator();
+        }
+        if let Some(status) = self.status.as_mut() {
+            status.set_resume_countdown(countdown);
+            self.request_redraw();
+        }
+    }
+
     /// Show the transient "press again to quit" hint for `key`.
     ///
     /// `ChatWidget` owns the quit shortcut state machine (it decides when quit is
