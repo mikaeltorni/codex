@@ -18,6 +18,13 @@ impl ChatWidget {
         self.usage_limit_wait_retry_at_ms = retry_at_ms;
         self.usage_limit_wait_next_tick =
             retry_at_ms.map(|_| Instant::now() + Duration::from_secs(1));
+        if !was_waiting && retry_at_ms.is_some() && self.has_chatgpt_account {
+            // Auto-resume keeps the core turn alive, so the ordinary rate-limit error path does
+            // not request account recovery choices. Refresh through that same account endpoint.
+            self.app_event_tx.send(AppEvent::RefreshRateLimits {
+                origin: crate::app_event::RateLimitRefreshOrigin::Recovery,
+            });
+        }
         if retry_at_ms.is_none() && !was_waiting {
             return;
         }

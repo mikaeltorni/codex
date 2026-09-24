@@ -326,6 +326,12 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
 
     chat.bottom_pane.set_task_running(true);
     chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits {
+            origin: crate::app_event::RateLimitRefreshOrigin::Recovery
+        })
+    ));
     let response = serde_json::from_value(json!({
         "accountId": "account-preview", "rateLimits": {},
         "rateLimitUpsell": {
