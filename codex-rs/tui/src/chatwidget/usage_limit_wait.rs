@@ -1,8 +1,9 @@
 //! Renders and refreshes the visible auto-resume countdown while a turn waits for quota reset.
 
 use super::*;
-use crate::bottom_pane::ActionableBanner;
+use crate::app_event::AppEvent;
 use crate::bottom_pane::BannerDismissal;
+use crate::bottom_pane::SelectionItem;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -11,6 +12,9 @@ const USAGE_LIMIT_WAIT_VIEW_ID: &str = "usage-limit-auto-resume";
 impl ChatWidget {
     pub(super) fn update_usage_limit_wait(&mut self, retry_at_ms: Option<i64>) {
         let was_waiting = self.usage_limit_wait_retry_at_ms.is_some();
+        if self.usage_limit_wait_retry_at_ms != retry_at_ms {
+            self.usage_limit_wait_banner_dismissed = false;
+        }
         self.usage_limit_wait_retry_at_ms = retry_at_ms;
         self.usage_limit_wait_next_tick =
             retry_at_ms.map(|_| Instant::now() + Duration::from_secs(1));
@@ -18,6 +22,16 @@ impl ChatWidget {
             return;
         }
         self.refresh_usage_limit_wait_banner();
+    }
+
+    /// Hide the wait actions while leaving the active reset deadline and redraw timer untouched.
+    pub(crate) fn dismiss_usage_limit_wait_banner(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_none() {
+            return;
+        }
+        self.usage_limit_wait_banner_dismissed = true;
+        self.bottom_pane.set_inline_banner(None);
+        self.request_redraw();
     }
 
     pub(crate) fn refresh_usage_limit_wait_for_time_tick(&mut self) {
@@ -40,13 +54,30 @@ impl ChatWidget {
 
         self.bottom_pane
             .set_status_resume_countdown(Some(format_remaining_time(retry_at_ms)));
-        self.bottom_pane.set_inline_banner(Some(ActionableBanner {
-            title: "Usage limit reached (Auto-continue is enabled)".to_string(),
-            dismissal: BannerDismissal::Persistent,
-            view_id: Some(USAGE_LIMIT_WAIT_VIEW_ID),
-            visible_while_task_running: true,
-            ..Default::default()
-        }));
+        if self.usage_limit_wait_banner_dismissed {
+            self.bottom_pane.set_inline_banner(None);
+        } else {
+            let mut banner = self.usage_limit_wait_backend_banner().unwrap_or_default();
+            banner.title = "Usage limit reached (Auto-continue is enabled)".to_string();
+            if banner.description.is_empty() {
+                banner.description =
+                    "Your turn will automatically continue when the usage limit resets."
+                        .to_string();
+            }
+            let thread_id = self.thread_id();
+            banner.actions.push(SelectionItem {
+                name: "Keep waiting".to_string(),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::DismissUsageLimitWaitBanner { thread_id });
+                })],
+                ..Default::default()
+            });
+            banner.dismissal = BannerDismissal::Persistent;
+            banner.view_id = Some(USAGE_LIMIT_WAIT_VIEW_ID);
+            banner.visible_while_task_running = true;
+            banner.interactive_while_task_running = true;
+            self.bottom_pane.set_inline_banner(Some(banner));
+        }
         self.request_redraw();
     }
 }

@@ -166,6 +166,7 @@ impl ChatWidget {
             clock_format: crate::clock_format::ClockFormat::system(),
             usage_notice_state: usage_notice::UsageNoticeState::default(),
             usage_limit_wait_retry_at_ms: None,
+            usage_limit_wait_banner_dismissed: false,
             usage_limit_wait_next_tick: None,
             backend_banner_state: backend_banners::BackendBannerState::default(),
             automatic_model_switch_state: backend_banners::AutomaticModelSwitchState::default(),

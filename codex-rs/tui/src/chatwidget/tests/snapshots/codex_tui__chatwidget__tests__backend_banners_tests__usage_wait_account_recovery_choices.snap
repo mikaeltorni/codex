@@ -1,0 +1,18 @@
+---
+source: tui/src/chatwidget/tests/backend_banners_tests.rs
+expression: snapshot
+---
+  Usage limit reached (Auto-continue is enabled)
+  Your included usage is exhausted. Choose an option below to continue.
+
+› 1. Add credits
+  2. Upgrade
+  3. Switch to Luna Reserve
+  4. Keep waiting
+
+  Press a number to choose · ↑/↓ to navigate · enter to select
+
+
+› Ask Codex to do anything
+
+  test-model-a default · /tmp/project

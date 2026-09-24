@@ -9,10 +9,12 @@ use super::ChatWidget;
 use super::QueuedUserMessage;
 use super::luna_reserve_return::ReserveReturnModel;
 use crate::app_command::AppCommand;
+use crate::app_event::AppEvent;
 use crate::backend_banners::BackendBanner;
 use crate::backend_banners::BannerPresentation;
 use crate::backend_banners::LUNA_RESERVE_BANNER;
 use crate::backend_banners::LUNA_RESERVE_RECOVERY_VIEW_ID;
+use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::popup_consts::accept_cancel_hint_line;
@@ -375,6 +377,65 @@ impl ChatWidget {
             })
     }
 
+    /// Reuse the active account recovery choices in the auto-resume wait banner.
+    pub(super) fn usage_limit_wait_backend_banner(&mut self) -> Option<ActionableBanner> {
+        let banner = self.applicable_backend_banner()?;
+        let mut content = self.backend_banner_actionable_content(banner);
+        if let Some(switch) = self.backend_banner_fallback()
+            && let Some(thread_id) = self.thread_id()
+        {
+            let model = switch.model.model.clone();
+            let model_name = self.model_catalog.display_name(&model).to_string();
+            content.actions.push(SelectionItem {
+                name: format!("Switch to {model_name}"),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::ApplyBackendBannerFallback { thread_id });
+                })],
+                ..Default::default()
+            });
+        }
+        Some(content)
+    }
+
+    fn applicable_backend_banner(&self) -> Option<&BackendBanner> {
+        let banner = self.backend_banner_state.banner.as_ref()?;
+        if self.backend_banner_state.dismissed {
+            return None;
+        }
+        // Keep Reserve recovery actions available while switching to Reserve.
+        if banner.banner_type == LUNA_RESERVE_BANNER {
+            return Some(banner);
+        }
+        // Explicit fallback payloads describe the selected replacement, not a pending switch.
+        let matches_selected_model = match banner.blocked_model_slug.as_deref() {
+            Some(blocked) if !banner.fallback_model_slugs.is_empty() => {
+                blocked != self.current_model()
+                    && banner
+                        .fallback_model_slugs
+                        .iter()
+                        .any(|model| model == self.current_model())
+            }
+            Some(_) | None => {
+                banner
+                    .model_slug
+                    .as_deref()
+                    .is_none_or(|model| model == self.current_model())
+                    || self.backend_banner_notice_model.as_deref() == Some(self.current_model())
+            }
+        };
+        matches_selected_model.then_some(banner)
+    }
+
+    fn backend_banner_actionable_content(&self, banner: &BackendBanner) -> ActionableBanner {
+        let mut content = banner.actionable_banner(self.clock_format);
+        if banner.banner_type == LUNA_RESERVE_BANNER && self.current_model() != LUNA_RESERVE_MODEL {
+            content.title = "Usage limit reached".to_string();
+            content.description =
+                "Your included usage is exhausted. Choose an option below to continue.".to_string();
+        }
+        content
+    }
+
     fn observe_backend_banner_view(&mut self) {
         if self.usage_limit_wait_retry_at_ms.is_some() {
             return;
@@ -392,47 +453,12 @@ impl ChatWidget {
         if self.usage_limit_wait_retry_at_ms.is_some() {
             return;
         }
-        let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
-            // Keep recovery actions available while switching, including on older servers
-            // without settings/update. The copy below describes the accepted model only.
-            if banner.banner_type == LUNA_RESERVE_BANNER {
-                return !self.backend_banner_state.dismissed;
-            }
-            // Explicit fallback payloads describe the selected replacement, not a pending switch.
-            let matches_selected_model = match banner.blocked_model_slug.as_deref() {
-                Some(blocked) if !banner.fallback_model_slugs.is_empty() => {
-                    blocked != self.current_model()
-                        && banner
-                            .fallback_model_slugs
-                            .iter()
-                            .any(|model| model == self.current_model())
-                }
-                Some(_) | None => {
-                    banner
-                        .model_slug
-                        .as_deref()
-                        .is_none_or(|model| model == self.current_model())
-                        || self.backend_banner_notice_model.as_deref() == Some(self.current_model())
-                }
-            };
-            !self.backend_banner_state.dismissed && matches_selected_model
-        });
+        let banner = self.applicable_backend_banner();
         if banner == self.backend_banner_state.presented.as_ref() {
             return;
         }
         let is_reserve = banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
-        let content = banner.map(|banner| {
-            let mut content = banner.actionable_banner(self.clock_format);
-            if banner.banner_type == LUNA_RESERVE_BANNER
-                && self.current_model() != LUNA_RESERVE_MODEL
-            {
-                content.title = "Usage limit reached".to_string();
-                content.description =
-                    "Your included usage is exhausted. Choose an option below to continue."
-                        .to_string();
-            }
-            content
-        });
+        let content = banner.map(|banner| self.backend_banner_actionable_content(banner));
         self.backend_banner_state.presented = banner.cloned();
         if content.is_some() {
             self.bottom_pane

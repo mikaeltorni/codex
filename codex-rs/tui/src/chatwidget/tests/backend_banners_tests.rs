@@ -305,6 +305,97 @@ async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner(
 }
 
 #[tokio::test]
+async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.requires_openai_auth = true;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+
+    let mut models = chat.model_catalog.try_list_models().unwrap();
+    if !models
+        .iter()
+        .any(|model| model.model == crate::model_catalog::LUNA_RESERVE_MODEL)
+    {
+        let mut reserve = models[0].clone();
+        reserve.model = crate::model_catalog::LUNA_RESERVE_MODEL.to_string();
+        reserve.display_name = "Luna Reserve".to_string();
+        models.push(reserve);
+        chat.model_catalog = Arc::new(ModelCatalog::new(models));
+    }
+
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    let response = serde_json::from_value(json!({
+        "accountId": "account-preview", "rateLimits": {},
+        "rateLimitUpsell": {
+            "banner_type": "luna_reserve", "presentation": "inline",
+            "title": "Usage limit reached",
+            "description": "Add credits or upgrade to continue.",
+            "ctas": [
+                {"action": "add_credits", "label": "Add credits"},
+                {"action": "open_pricing_dialog", "label": "Upgrade"}
+            ]
+        }
+    }))
+    .unwrap();
+    chat.update_backend_banner(&response);
+    chat.refresh_usage_limit_wait_for_time_tick();
+
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    for action in [
+        "Usage limit reached (Auto-continue is enabled)",
+        "Add credits",
+        "Upgrade",
+        "Switch to Luna Reserve",
+        "Keep waiting",
+        "Resuming in ",
+    ] {
+        assert!(
+            rendered.contains(action),
+            "missing {action:?} in:\n{rendered}"
+        );
+    }
+    let snapshot = rendered
+        .lines()
+        .filter(|line| !line.contains("Resuming in"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_account_recovery_choices", snapshot);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::OpenUrlInBrowser { url })
+            if url == "https://chatgpt.com/codex/settings/usage?credits_modal=true"
+    ));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::OpenUrlInBrowser { url })
+            if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=plus#pricing"
+    ));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::ApplyBackendBannerFallback { thread_id: event_thread_id })
+            if event_thread_id == thread_id
+    ));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner {
+            thread_id: Some(event_thread_id)
+        }) if event_thread_id == thread_id
+    ));
+
+    chat.dismiss_usage_limit_wait_banner();
+    let waiting = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
+    assert!(waiting.contains("Resuming in "), "{waiting}");
+}
+
+#[tokio::test]
 async fn backend_banner_new_turn_dismisses_only_shown_dismissible_content() {
     for (presentation, show_before_submit) in [
         (None, true),
