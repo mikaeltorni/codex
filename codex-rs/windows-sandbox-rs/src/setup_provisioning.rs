@@ -364,42 +364,28 @@ fn lock_sandbox_dir(
     let system_sid = resolve_sid("SYSTEM")?;
     let admins_sid = resolve_sid("Administrators")?;
     let real_sid = resolve_sid(real_user)?;
-    let inherited = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
-    let mut entries = vec![
+    let entries = [
         (
             sandbox_group_sid.to_vec(),
             sandbox_group_mask,
             sandbox_group_access_mode,
-            inherited,
         ),
         (
             system_sid,
             FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE,
             GRANT_ACCESS,
-            inherited,
         ),
         (
             admins_sid,
             FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE,
             GRANT_ACCESS,
-            inherited,
         ),
-        (
-            real_sid.clone(),
-            real_user_mask & !WRITE_DAC,
-            GRANT_ACCESS,
-            inherited,
-        ),
+        (real_sid, real_user_mask, GRANT_ACCESS),
     ];
-    // Permission maintenance belongs to the trusted caller on this directory,
-    // not to the helper files and directories that inherit its content access.
-    if real_user_mask & WRITE_DAC != 0 {
-        entries.push((real_sid, WRITE_DAC, GRANT_ACCESS, 0));
-    }
     unsafe {
         let mut eas: Vec<EXPLICIT_ACCESS_W> = Vec::new();
         let mut sids: Vec<*mut c_void> = Vec::new();
-        for (sid_bytes, mask, access_mode, inheritance) in &entries {
+        for (sid_bytes, mask, access_mode) in entries.iter().map(|(s, m, a)| (s, *m, *a)) {
             let sid_str = string_from_sid_bytes(sid_bytes).map_err(anyhow::Error::msg)?;
             let sid_w = to_wide(OsStr::new(&sid_str));
             let mut psid: *mut c_void = std::ptr::null_mut();
@@ -411,9 +397,9 @@ fn lock_sandbox_dir(
             }
             sids.push(psid);
             eas.push(EXPLICIT_ACCESS_W {
-                grfAccessPermissions: *mask,
-                grfAccessMode: *access_mode,
-                grfInheritance: *inheritance,
+                grfAccessPermissions: mask,
+                grfAccessMode: access_mode,
+                grfInheritance: OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
                 Trustee: TRUSTEE_W {
                     pMultipleTrustee: std::ptr::null_mut(),
                     MultipleTrusteeOperation: 0,
