@@ -106,6 +106,7 @@ use codex_protocol::protocol::ReasoningRawContentDeltaEvent;
 use codex_protocol::protocol::SafetyBufferingEvent;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::TurnDiffEvent;
+use codex_protocol::protocol::UsageLimitWaitEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
 use codex_skills::ToolMentionKind;
@@ -1639,7 +1640,7 @@ async fn run_sampling_request(
                 &responses_metadata,
             )?;
         }
-        let err = match try_run_sampling_request(
+        let sampling_result = try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
             Arc::clone(&step_context),
@@ -1650,8 +1651,8 @@ async fn run_sampling_request(
             &prompt,
             cancellation_token.child_token(),
         )
-        .await
-        {
+        .await;
+        let err = match sampling_result {
             Ok(output) => {
                 return Ok((output, original_input.unwrap_or(prompt.input)));
             }
@@ -1665,7 +1666,50 @@ async fn run_sampling_request(
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
                     }
-                    return Err(err);
+                    let Some(resets_at) = e
+                        .resets_at
+                        .filter(|_| turn_context.config.auto_resume_on_usage_limit)
+                    else {
+                        return Err(err);
+                    };
+                    if original_input.is_none() {
+                        original_input = Some(prompt.input);
+                    }
+                    // Backend quota state can trail the advertised reset. The margin
+                    // also prevents a stale, already-past reset from spinning on 429s.
+                    let wait_duration = resets_at
+                        .signed_duration_since(chrono::Utc::now())
+                        .to_std()
+                        .unwrap_or_default()
+                        .saturating_add(std::time::Duration::from_secs(5));
+                    let retry_at_ms = chrono::Utc::now().timestamp_millis().saturating_add(
+                        i64::try_from(wait_duration.as_millis()).unwrap_or(i64::MAX),
+                    );
+                    sess.send_event(
+                        &turn_context,
+                        EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms }),
+                    )
+                    .await;
+                    info!(%resets_at, wait_seconds = wait_duration.as_secs(), "Waiting for usage limit reset");
+                    tokio::select! {
+                        biased;
+                        _ = cancellation_token.cancelled() => {
+                            info!("Usage limit wait cancelled");
+                            sess.send_event(
+                                &turn_context,
+                                EventMsg::UsageLimitWaitEnded,
+                            )
+                            .await;
+                            return Err(CodexErr::TurnAborted);
+                        }
+                        _ = tokio::time::sleep(wait_duration) => {}
+                    }
+                    // End the wait before retrying: the TUI starts a fresh working timer here,
+                    // even if the next sampling request takes time or hits another usage limit.
+                    sess.send_event(&turn_context, EventMsg::UsageLimitWaitEnded)
+                        .await;
+                    info!("Usage limit reset wait complete; retrying sampling request");
+                    continue;
                 }
                 _ => err,
             },
@@ -2056,6 +2100,8 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
         }
         EventMsg::Error(_)
         | EventMsg::Warning(_)
+        | EventMsg::UsageLimitWaitStarted(_)
+        | EventMsg::UsageLimitWaitEnded
         | EventMsg::AuthRecoveryStarted(_)
         | EventMsg::AuthRecoveryCompleted(_)
         | EventMsg::GuardianWarning(_)

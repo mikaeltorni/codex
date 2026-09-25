@@ -1557,6 +1557,14 @@ impl App {
                     self.refresh_rate_limits(app_server, RateLimitRefreshOrigin::Periodic);
                 }
             }
+            AppEvent::DismissUsageLimitWaitBanner { thread_id } => {
+                if self.active_thread_id == thread_id
+                    && self.chat_widget.thread_id() == thread_id
+                {
+                    tracing::debug!("user hid usage-limit auto-resume actions");
+                    self.chat_widget.dismiss_usage_limit_wait_banner();
+                }
+            }
             AppEvent::RefreshThreadUsage {
                 thread_id,
                 request_id,

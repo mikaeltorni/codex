@@ -1,0 +1,19 @@
+---
+source: tui/src/chatwidget/tests/backend_banners_tests.rs
+expression: stable
+---
+  Usage limit reached (Auto-continue is enabled)
+  Upgrade your subscription to continue sooner, or wait for your usage limit to reset.
+  Your turn will resume automatically.
+
+› 1. Upgrade
+  2. Keep waiting
+
+  Press a number to choose · ↑/↓ to navigate · enter to select
+
+• Resuming in <remaining> • esc to interrupt
+
+
+› Ask Codex to do anything
+
+  test-model-a default · /tmp/project

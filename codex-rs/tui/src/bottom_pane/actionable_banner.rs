@@ -35,6 +35,12 @@ pub(crate) struct ActionableBanner {
     pub(crate) initial_selected_idx: Option<usize>,
     pub(crate) dismissal: BannerDismissal,
     pub(crate) view_id: Option<&'static str>,
+    /// Keep an informational banner visible while a task is running.
+    pub(crate) visible_while_task_running: bool,
+    /// Allow banner actions to be selected while a task is running.
+    pub(crate) interactive_while_task_running: bool,
+    /// Leave one row before the status line when both are visible.
+    pub(crate) gap_below: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -47,6 +53,9 @@ pub(crate) enum BannerDismissal {
 pub(super) struct InlineBanner {
     content: InlineBannerContent,
     dismissal: BannerDismissal,
+    pub(super) visible_while_task_running: bool,
+    interactive_while_task_running: bool,
+    pub(super) gap_below: bool,
     shown: Cell<bool>,
     // Current visibility is separate from whether this banner has ever been shown.
     pub(super) visible: Cell<bool>,
@@ -167,6 +176,9 @@ impl BottomPane {
     pub(crate) fn set_inline_banner(&mut self, banner: Option<ActionableBanner>) {
         self.inline_banner = banner.map(|banner| {
             let dismissal = banner.dismissal;
+            let visible_while_task_running = banner.visible_while_task_running;
+            let interactive_while_task_running = banner.interactive_while_task_running;
+            let gap_below = banner.gap_below;
             let has_actions = !banner.actions.is_empty();
             let mut params: SelectionViewParams = banner.into();
             params.header_gap = 0;
@@ -174,13 +186,17 @@ impl BottomPane {
             for item in &mut params.items {
                 item.dismiss_on_select = false;
             }
-            let hint = match (dismissal, has_actions) {
-                (BannerDismissal::Persistent, true) => "Press a number to choose",
-                (BannerDismissal::Persistent, false) => "",
-                (BannerDismissal::Dismissible, true) => {
-                    "Press a number to choose · esc to dismiss · type to continue"
+            let hint = if interactive_while_task_running && has_actions {
+                "Press a number to choose · ↑/↓ to navigate · enter to select"
+            } else {
+                match (dismissal, has_actions) {
+                    (BannerDismissal::Persistent, true) => "Press a number to choose",
+                    (BannerDismissal::Persistent, false) => "",
+                    (BannerDismissal::Dismissible, true) => {
+                        "Press a number to choose · esc to dismiss · type to continue"
+                    }
+                    (BannerDismissal::Dismissible, false) => "esc to dismiss · type to continue",
                 }
-                (BannerDismissal::Dismissible, false) => "esc to dismiss · type to continue",
             };
             let hint: Line<'static> = hint.dim().into();
             params.footer_hint = Some(hint.clone());
@@ -198,6 +214,9 @@ impl BottomPane {
                     }
                 },
                 dismissal,
+                visible_while_task_running,
+                interactive_while_task_running,
+                gap_below,
                 shown: Cell::new(false),
                 visible: Cell::new(false),
                 dismissed: false,
@@ -231,16 +250,19 @@ impl BottomPane {
             || self.composer.popup_active()
             || self.composer.is_in_paste_burst()
             || self.composer_should_handle_vim_insert_escape(key)
-            || self.is_task_running
             || key.kind != KeyEventKind::Press
             || key.modifiers != KeyModifiers::NONE
         {
             return false;
         }
+        let is_task_running = self.is_task_running;
         let Some(banner) = self.inline_banner.as_mut() else {
             return false;
         };
         if !banner.visible.get() || banner.dismissed {
+            return false;
+        }
+        if is_task_running && !banner.interactive_while_task_running {
             return false;
         }
         match key.code {
@@ -252,6 +274,15 @@ impl BottomPane {
                 if digit as usize - '1' as usize >= banner.visible_action_count.get() {
                     return false;
                 }
+                let InlineBannerContent::Actions(view) = &mut banner.content else {
+                    return false;
+                };
+                view.handle_key_event(key);
+                let _ = view.take_last_selected_index();
+            }
+            KeyCode::Up | KeyCode::Down | KeyCode::Enter
+                if banner.interactive_while_task_running =>
+            {
                 let InlineBannerContent::Actions(view) = &mut banner.content else {
                     return false;
                 };
