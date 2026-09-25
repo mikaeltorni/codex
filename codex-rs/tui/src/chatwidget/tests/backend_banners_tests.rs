@@ -407,7 +407,8 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
     chat.bottom_pane.set_task_running(true);
-    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+    chat.update_usage_limit_wait(Some(retry_at_ms));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::RefreshRateLimits { .. })
@@ -428,6 +429,7 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
     chat.update_backend_banner(&response);
     chat.on_rate_limit_snapshot(Some(response.rate_limits));
     chat.refresh_usage_limit_wait_for_time_tick();
+    let initial_tick = chat.usage_limit_wait_next_tick.unwrap();
 
     let rendered = render_bottom_popup(&chat, /*width*/ 90);
     assert!(rendered.contains("Request increase"), "{rendered}");
@@ -446,6 +448,34 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
         .collect::<Vec<_>>()
         .join("\n");
     insta::assert_snapshot!("usage_wait_team_recovery_choices", stable);
+
+    chat.refresh_usage_limit_wait_for_time_tick();
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    assert!(chat.usage_limit_wait_next_tick.unwrap() > initial_tick);
+    let after_request = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(
+        after_request.contains("Request increase"),
+        "{after_request}"
+    );
+    assert!(after_request.contains("Resuming in "), "{after_request}");
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+    ));
+    chat.dismiss_usage_limit_wait_banner();
+    chat.refresh_usage_limit_wait_for_time_tick();
+    let after_dismissal = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(
+        !after_dismissal.contains("Keep waiting"),
+        "{after_dismissal}"
+    );
+    assert!(
+        after_dismissal.contains("Resuming in "),
+        "{after_dismissal}"
+    );
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
 }
 
 #[tokio::test]
