@@ -379,8 +379,8 @@ impl ChatWidget {
 
     /// Reuse the active account recovery choices in the auto-resume wait banner.
     pub(super) fn usage_limit_wait_backend_banner(&mut self) -> Option<ActionableBanner> {
-        let banner = self.applicable_backend_banner()?;
-        let mut content = self.backend_banner_actionable_content(banner);
+        let banner = self.applicable_backend_banner()?.for_usage_limit_wait();
+        let mut content = self.backend_banner_actionable_content(&banner);
         if let Some(switch) = self.backend_banner_fallback()
             && let Some(thread_id) = self.thread_id()
         {

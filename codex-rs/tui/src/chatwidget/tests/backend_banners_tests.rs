@@ -332,7 +332,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
             origin: crate::app_event::RateLimitRefreshOrigin::Recovery
         })
     ));
-    let response = serde_json::from_value(json!({
+    let mut response: GetAccountRateLimitsResponse = serde_json::from_value(json!({
         "accountId": "account-preview", "rateLimits": {},
         "rateLimitUpsell": {
             "banner_type": "luna_reserve", "presentation": "inline",
@@ -345,6 +345,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
         }
     }))
     .unwrap();
+    response.rate_limits.plan_type = Some(PlanType::Plus);
     chat.update_backend_banner(&response);
     chat.refresh_usage_limit_wait_for_time_tick();
 
@@ -379,7 +380,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::OpenUrlInBrowser { url })
-            if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=plus#pricing"
+            if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing"
     ));
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
     assert!(matches!(
@@ -399,6 +400,52 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let waiting = render_bottom_popup(&chat, /*width*/ 90);
     assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
     assert!(waiting.contains("Resuming in "), "{waiting}");
+}
+
+#[tokio::test]
+async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits { .. })
+    ));
+
+    let mut response = banner_response(
+        /*presentation*/ None,
+        json!([{"action": "notify_owner", "label": "Request credits"}]),
+    );
+    response.rate_limits.plan_type = Some(PlanType::Team);
+    response.rate_limits.rate_limit_reached_type =
+        Some(RateLimitReachedType::WorkspaceMemberCreditsDepleted);
+    let upsell = response.rate_limit_upsell.as_mut().unwrap();
+    upsell["banner_type"] = json!("workspace_member_credits_depleted");
+    upsell["model_slug"] = serde_json::Value::Null;
+    upsell["presentation"] = serde_json::Value::Null;
+    upsell["fallback_model_slugs"] = serde_json::Value::Null;
+    chat.update_backend_banner(&response);
+    chat.on_rate_limit_snapshot(Some(response.rate_limits));
+    chat.refresh_usage_limit_wait_for_time_tick();
+
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(rendered.contains("Request increase"), "{rendered}");
+    assert!(rendered.contains("Keep waiting"), "{rendered}");
+    assert!(rendered.contains("Resuming in "), "{rendered}");
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::SendAddCreditsNudgeEmail {
+            credit_type: AddCreditsNudgeCreditType::UsageLimit
+        })
+    ));
+    let stable = rendered
+        .lines()
+        .filter(|line| !line.contains("Resuming in"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_team_recovery_choices", stable);
 }
 
 #[tokio::test]
@@ -470,7 +517,6 @@ async fn backend_banner_invalid_content_and_absence_restore_fallback() {
     for replacement in [
         serde_json::Value::Null,
         json!({"presentation":"future_mode"}),
-        json!({"presentation":null}),
         json!({"title":" "}),
     ] {
         let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
