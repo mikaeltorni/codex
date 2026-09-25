@@ -1609,7 +1609,6 @@ async fn run_sampling_request(
     let mut initial_input = Some(input);
     let mut original_input = None;
     let mut executed_tool_calls_by_output = HashMap::new();
-    let mut usage_limit_wait_active = false;
     loop {
         // Running code-mode cells can request review while this response is in flight.
         // Keep the latest received ID until response.created replaces it.
@@ -1653,16 +1652,6 @@ async fn run_sampling_request(
             cancellation_token.child_token(),
         )
         .await;
-        if usage_limit_wait_active
-            && !matches!(
-                &sampling_result,
-                Err(err) if matches!(err.details(), CodexErrorDetails::UsageLimitReached(_))
-            )
-        {
-            sess.send_event(&turn_context, EventMsg::UsageLimitWaitEnded)
-                .await;
-            usage_limit_wait_active = false;
-        }
         let err = match sampling_result {
             Ok(output) => {
                 return Ok((output, original_input.unwrap_or(prompt.input)));
@@ -1681,10 +1670,6 @@ async fn run_sampling_request(
                         .resets_at
                         .filter(|_| turn_context.config.auto_resume_on_usage_limit)
                     else {
-                        if usage_limit_wait_active {
-                            sess.send_event(&turn_context, EventMsg::UsageLimitWaitEnded)
-                                .await;
-                        }
                         return Err(err);
                     };
                     if original_input.is_none() {
@@ -1705,7 +1690,6 @@ async fn run_sampling_request(
                         EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms }),
                     )
                     .await;
-                    usage_limit_wait_active = true;
                     info!(%resets_at, wait_seconds = wait_duration.as_secs(), "Waiting for usage limit reset");
                     tokio::select! {
                         biased;
@@ -1720,6 +1704,10 @@ async fn run_sampling_request(
                         }
                         _ = tokio::time::sleep(wait_duration) => {}
                     }
+                    // End the wait before retrying: the TUI starts a fresh working timer here,
+                    // even if the next sampling request takes time or hits another usage limit.
+                    sess.send_event(&turn_context, EventMsg::UsageLimitWaitEnded)
+                        .await;
                     info!("Usage limit reset wait complete; retrying sampling request");
                     continue;
                 }

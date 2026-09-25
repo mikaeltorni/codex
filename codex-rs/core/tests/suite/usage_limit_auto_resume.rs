@@ -64,7 +64,29 @@ async fn retries_multiple_usage_limits_with_completed_tool_result() -> anyhow::R
         })
         .build_with_auto_env(&server)
         .await?;
-    test.submit_text_turn("do the task").await?;
+    test.codex
+        .start_or_steer_turn(codex_core::TurnInputRequest::user_input(vec![
+            codex_protocol::user_input::UserInput::Text {
+                text: "do the task".into(),
+                text_elements: Vec::new(),
+            },
+        ]))
+        .await?;
+    let mut waits_started = 0;
+    let mut waits_ended = 0;
+    loop {
+        match wait_for_event(&test.codex, |_| true).await {
+            EventMsg::UsageLimitWaitStarted(_) => waits_started += 1,
+            EventMsg::UsageLimitWaitEnded => {
+                waits_ended += 1;
+                assert_eq!(waits_ended, waits_started);
+            }
+            EventMsg::TurnComplete(_) => break,
+            _ => {}
+        }
+    }
+    assert_eq!(waits_started, 2);
+    assert_eq!(waits_ended, 2);
 
     let requests = server.received_requests().await.unwrap_or_default();
     let requests: Vec<_> = requests

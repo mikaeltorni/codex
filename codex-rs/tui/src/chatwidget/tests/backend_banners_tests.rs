@@ -624,6 +624,31 @@ async fn hiding_usage_wait_actions_keeps_reset_countdown_running() {
 }
 
 #[tokio::test]
+async fn usage_wait_resumption_restarts_working_elapsed_time() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.bottom_pane.set_task_running(true);
+    chat.bottom_pane
+        .reset_status_timer(Duration::from_secs(/*secs*/ 15 * 60));
+    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+
+    chat.update_usage_limit_wait(Some(retry_at_ms));
+    assert!(chat.bottom_pane.status_elapsed().unwrap() >= Duration::from_secs(15 * 60));
+    assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
+
+    chat.update_usage_limit_wait(None);
+    assert!(chat.bottom_pane.status_elapsed().unwrap() < Duration::from_secs(2));
+    let resumed = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(resumed.contains("Working (0s"), "{resumed}");
+    assert!(!resumed.contains("Resuming in "), "{resumed}");
+
+    // Turn completion also clears wait state; it must not restart an already resumed clock.
+    chat.bottom_pane
+        .reset_status_timer(Duration::from_secs(/*secs*/ 10));
+    chat.update_usage_limit_wait(None);
+    assert!(chat.bottom_pane.status_elapsed().unwrap() >= Duration::from_secs(10));
+}
+
+#[tokio::test]
 async fn backend_banner_new_turn_dismisses_only_shown_dismissible_content() {
     for (presentation, show_before_submit) in [
         (None, true),

@@ -18,6 +18,12 @@ impl ChatWidget {
         self.usage_limit_wait_retry_at_ms = retry_at_ms;
         self.usage_limit_wait_next_tick =
             retry_at_ms.map(|_| Instant::now() + Duration::from_secs(1));
+        if was_waiting && retry_at_ms.is_none() {
+            // Core emits the end of a quota wait just before the sampling retry begins.
+            // Discard the elapsed wait so the visible working clock starts with that retry.
+            self.bottom_pane.reset_status_timer(Duration::ZERO);
+            self.bottom_pane.set_status_timer_origin(None);
+        }
         if !was_waiting && retry_at_ms.is_some() && self.has_chatgpt_account {
             // Auto-resume keeps the core turn alive, so the ordinary rate-limit error path does
             // not request account recovery choices. Refresh through that same account endpoint.
