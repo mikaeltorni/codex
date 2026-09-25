@@ -3,7 +3,8 @@ source: tui/src/chatwidget/tests/backend_banners_tests.rs
 expression: snapshot
 ---
   Usage limit reached (Auto-continue is enabled)
-  Your included usage is exhausted. Choose an option below to continue.
+  Upgrade your subscription to continue sooner, or wait for your usage limit to reset.
+  Your turn will resume automatically.
 
 › 1. Add credits
   2. Upgrade

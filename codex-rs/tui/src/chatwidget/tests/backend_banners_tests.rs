@@ -352,6 +352,9 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let rendered = render_bottom_popup(&chat, /*width*/ 90);
     for action in [
         "Usage limit reached (Auto-continue is enabled)",
+        "Upgrade your subscription to continue sooner, or wait for your",
+        "usage limit to reset.",
+        "Your turn will resume automatically.",
         "Add credits",
         "Upgrade",
         "Switch to Luna Reserve",
@@ -431,7 +434,14 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
             Ok(AppEvent::RefreshRateLimits { .. })
         ));
         let rendered = render_bottom_popup(&chat, /*width*/ 90);
-        for expected in ["Upgrade", "Keep waiting", "Resuming in "] {
+        for expected in [
+            "Upgrade your subscription to continue sooner, or wait for your",
+            "usage limit to reset.",
+            "Your turn will resume automatically.",
+            "Upgrade",
+            "Keep waiting",
+            "Resuming in ",
+        ] {
             assert!(
                 rendered.contains(expected),
                 "missing {expected:?}: {rendered}"

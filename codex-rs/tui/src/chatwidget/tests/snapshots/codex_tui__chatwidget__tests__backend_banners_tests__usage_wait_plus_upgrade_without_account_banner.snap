@@ -1,10 +1,10 @@
 ---
 source: tui/src/chatwidget/tests/backend_banners_tests.rs
-assertion_line: 444
 expression: stable
 ---
   Usage limit reached (Auto-continue is enabled)
-  Your turn will automatically continue when the usage limit resets.
+  Upgrade your subscription to continue sooner, or wait for your usage limit to reset.
+  Your turn will resume automatically.
 
 › 1. Upgrade
   2. Keep waiting

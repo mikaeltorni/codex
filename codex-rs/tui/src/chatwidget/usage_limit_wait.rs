@@ -66,7 +66,9 @@ impl ChatWidget {
         } else {
             let mut banner = self.usage_limit_wait_backend_banner().unwrap_or_default();
             banner.title = "Usage limit reached (Auto-continue is enabled)".to_string();
-            if banner.description.is_empty() {
+            if banner.actions.iter().any(|action| action.name == "Upgrade") {
+                banner.description = "Upgrade your subscription to continue sooner, or wait for your usage limit to reset. Your turn will resume automatically.".to_string();
+            } else if banner.description.is_empty() {
                 banner.description =
                     "Your turn will automatically continue when the usage limit resets."
                         .to_string();
