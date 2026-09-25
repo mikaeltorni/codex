@@ -447,6 +447,13 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
                 "missing {expected:?}: {rendered}"
             );
         }
+        let lines = rendered.lines().collect::<Vec<_>>();
+        let hint_row = lines
+            .iter()
+            .position(|line| line.contains("Press a number to choose"))
+            .expect("wait menu hint");
+        assert!(lines[hint_row + 1].trim().is_empty(), "{rendered}");
+        assert!(lines[hint_row + 2].contains("Resuming in "), "{rendered}");
         if dismissed {
             assert!(rendered.contains("Add credits"), "{rendered}");
         }
@@ -464,7 +471,13 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
         if !dismissed {
             let stable = rendered
                 .lines()
-                .filter(|line| !line.contains("Resuming in"))
+                .map(|line| {
+                    if line.contains("Resuming in ") {
+                        "• Resuming in <remaining> • esc to interrupt"
+                    } else {
+                        line
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             insta::assert_snapshot!("usage_wait_plus_upgrade_without_account_banner", stable);

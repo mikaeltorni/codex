@@ -39,6 +39,8 @@ pub(crate) struct ActionableBanner {
     pub(crate) visible_while_task_running: bool,
     /// Allow banner actions to be selected while a task is running.
     pub(crate) interactive_while_task_running: bool,
+    /// Leave one row before the status line when both are visible.
+    pub(crate) gap_below: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -53,6 +55,7 @@ pub(super) struct InlineBanner {
     dismissal: BannerDismissal,
     pub(super) visible_while_task_running: bool,
     interactive_while_task_running: bool,
+    pub(super) gap_below: bool,
     shown: Cell<bool>,
     // Current visibility is separate from whether this banner has ever been shown.
     pub(super) visible: Cell<bool>,
@@ -175,6 +178,7 @@ impl BottomPane {
             let dismissal = banner.dismissal;
             let visible_while_task_running = banner.visible_while_task_running;
             let interactive_while_task_running = banner.interactive_while_task_running;
+            let gap_below = banner.gap_below;
             let has_actions = !banner.actions.is_empty();
             let mut params: SelectionViewParams = banner.into();
             params.header_gap = 0;
@@ -212,6 +216,7 @@ impl BottomPane {
                 dismissal,
                 visible_while_task_running,
                 interactive_while_task_running,
+                gap_below,
                 shown: Cell::new(false),
                 visible: Cell::new(false),
                 dismissed: false,

@@ -85,6 +85,7 @@ impl ChatWidget {
             banner.view_id = Some(USAGE_LIMIT_WAIT_VIEW_ID);
             banner.visible_while_task_running = true;
             banner.interactive_while_task_running = true;
+            banner.gap_below = true;
             self.bottom_pane.set_inline_banner(Some(banner));
         }
         self.request_redraw();

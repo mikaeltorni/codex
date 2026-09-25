@@ -2143,6 +2143,9 @@ impl BottomPane {
                 .filter(|banner| !self.is_task_running || banner.visible_while_task_running)
             {
                 flex.push(/*flex*/ 0, RenderableItem::Borrowed(banner));
+                if banner.gap_below && self.status_widget().is_some() {
+                    flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
+                }
             }
             if let Some(status) = self.status_widget() {
                 flex.push(
