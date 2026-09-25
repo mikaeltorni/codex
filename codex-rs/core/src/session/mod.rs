@@ -264,6 +264,7 @@ mod turn_input;
 mod turn_suspension;
 mod world_state;
 use self::code_mode_warning::unsupported_code_mode_warning;
+pub(crate) use self::environment::ThreadEnvironmentDefaults;
 #[cfg(test)]
 use self::handlers::submission_dispatch_span;
 use self::handlers::submission_loop;
@@ -1901,18 +1902,11 @@ impl Session {
             let root_service_tier_changed = updated.parent_thread_id.is_none()
                 && state.session_configuration.step_settings.service_tier
                     != updated.step_settings.service_tier;
-            let environment_config = updated.inferred_environment_config();
             let mcp_inputs_changed = self.mcp_inputs_differ(&state.session_configuration, &updated);
             if mcp_inputs_changed {
                 self.mark_mcp_runtime_dirty();
             }
-            if state.session_configuration.inferred_environment_config() != environment_config {
-                self.services
-                    .turn_environments
-                    .update_thread_config(|environment| {
-                        updated.inferred_environment_config_for(environment)
-                    });
-            }
+            // Save new environment defaults for future turns. The running turn keeps its own.
             state.session_configuration = updated;
             if root_service_tier_changed {
                 self.services.agent_control.set_root_service_tier(
@@ -3320,14 +3314,32 @@ impl Session {
     )]
     pub(crate) async fn active_turn_context_and_strict_auto_review(
         &self,
-    ) -> Option<(Arc<TurnContext>, Arc<step_context::StepInputs>, bool)> {
+    ) -> Option<(
+        Arc<TurnContext>,
+        Arc<ResolvedStepSettings>,
+        TurnEnvironmentSnapshot,
+        bool,
+    )> {
         let active = self.active_turn.lock().await;
         let active = active.as_ref()?;
         let task = active.task.as_ref()?;
         let turn_context = Arc::clone(&task.turn_context);
-        let step_inputs = turn_context.next_step_input.load_full();
-        let ts = active.turn_state.lock().await;
-        Some((turn_context, step_inputs, ts.strict_auto_review_enabled()))
+        let settings = turn_context.next_step_settings.load_full();
+        let strict_auto_review = active.turn_state.lock().await.strict_auto_review_enabled();
+        let environments = self.services.turn_environments.snapshot_now();
+        Some((turn_context, settings, environments, strict_auto_review))
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn reads must stay consistent with the matching turn state"
+    )]
+    pub(crate) async fn strict_auto_review_enabled(&self) -> bool {
+        let active = self.active_turn.lock().await;
+        let Some(active) = active.as_ref().filter(|active| active.task.is_some()) else {
+            return false;
+        };
+        active.turn_state.lock().await.strict_auto_review_enabled()
     }
 
     pub(crate) async fn granted_session_permissions(
@@ -3770,10 +3782,19 @@ impl Session {
         required_servers: &[String],
         required_plugins: &HashSet<String>,
     ) -> CodexResult<Arc<StepContext>> {
-        // Capture settings and selection together before asynchronous planning.
-        // Existing steps retain this version even if the turn is updated.
-        let inputs = turn_context.next_step_input.load_full();
-        let mut settings = Arc::clone(&inputs.settings);
+        // Read the step's model and record its environments together so an update cannot split them.
+        // Wait for executor startup below, after releasing the lock.
+        let (mut settings, environments) = {
+            let _active = self
+                .active_turn
+                .lock()
+                .or_cancel(cancellation_token)
+                .await?;
+            (
+                turn_context.next_step_settings.load_full(),
+                self.services.turn_environments.snapshot(),
+            )
+        };
         if matches!(
             turn_context.session_source,
             SessionSource::SubAgent(SubAgentSource::ThreadSpawn { .. })
@@ -3798,8 +3819,7 @@ impl Session {
             settings.model_info.as_ref(),
         );
         let session_telemetry = settings.telemetry(&turn_context.session_telemetry);
-        // Refresh only the captured step selection, without adopting newer inputs.
-        let environments = inputs.environments.refresh_readiness();
+        let environments = environments.or_cancel(cancellation_token).await?;
         let (loaded_agents_md, warnings) = self
             .services
             .agents_md_manager
