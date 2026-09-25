@@ -377,10 +377,27 @@ impl ChatWidget {
             })
     }
 
-    /// Reuse the active account recovery choices in the auto-resume wait banner.
+    /// Reuse account recovery choices during an auto-resume wait, even if the earlier account
+    /// notice was dismissed, and supply the plan's upgrade/request action if no notice arrived.
     pub(super) fn usage_limit_wait_backend_banner(&mut self) -> Option<ActionableBanner> {
-        let banner = self.applicable_backend_banner()?.for_usage_limit_wait();
-        let mut content = self.backend_banner_actionable_content(&banner);
+        let mut content = self
+            .applicable_backend_banner()
+            .map(|banner| self.backend_banner_actionable_content(&banner.for_usage_limit_wait()))
+            .unwrap_or_default();
+        if self.has_chatgpt_account
+            && let Some(plan_type) = self.plan_type
+            && let Some(fallback) = BackendBanner::recovery_fallback_for_plan(plan_type)
+        {
+            for action in fallback.actionable_banner(self.clock_format).actions {
+                if !content
+                    .actions
+                    .iter()
+                    .any(|existing| existing.name == action.name)
+                {
+                    content.actions.push(action);
+                }
+            }
+        }
         if let Some(switch) = self.backend_banner_fallback()
             && let Some(thread_id) = self.thread_id()
         {
@@ -399,7 +416,7 @@ impl ChatWidget {
 
     fn applicable_backend_banner(&self) -> Option<&BackendBanner> {
         let banner = self.backend_banner_state.banner.as_ref()?;
-        if self.backend_banner_state.dismissed {
+        if self.backend_banner_state.dismissed && self.usage_limit_wait_retry_at_ms.is_none() {
             return None;
         }
         // Keep Reserve recovery actions available while switching to Reserve.

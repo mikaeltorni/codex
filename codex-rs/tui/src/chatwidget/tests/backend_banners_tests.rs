@@ -403,6 +403,94 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
 }
 
 #[tokio::test]
+async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
+    for dismissed in [false, true] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(PlanType::Plus);
+        if dismissed {
+            let mut response = banner_response(
+                Some("dismissible"),
+                json!([
+                    {"action": "add_credits", "label": "Add credits"},
+                    {"action": "open_pricing_dialog", "label": "Upgrade"}
+                ]),
+            );
+            response.rate_limits.plan_type = Some(PlanType::Plus);
+            chat.update_backend_banner(&response);
+            assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Upgrade"));
+            chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            chat.sync_backend_banner_view();
+            assert!(!chat.has_applicable_backend_banner());
+        }
+
+        chat.bottom_pane.set_task_running(true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::RefreshRateLimits { .. })
+        ));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        for expected in ["Upgrade", "Keep waiting", "Resuming in "] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?}: {rendered}"
+            );
+        }
+        if dismissed {
+            assert!(rendered.contains("Add credits"), "{rendered}");
+        }
+        let upgrade_choice = if dismissed { '2' } else { '1' };
+        chat.handle_key_event(KeyEvent::new(
+            KeyCode::Char(upgrade_choice),
+            KeyModifiers::NONE,
+        ));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::OpenUrlInBrowser { url })
+                if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing"
+        ));
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
+        if !dismissed {
+            let stable = rendered
+                .lines()
+                .filter(|line| !line.contains("Resuming in"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            insta::assert_snapshot!("usage_wait_plus_upgrade_without_account_banner", stable);
+        }
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_team_request_is_available_without_account_banner() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Team);
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits { .. })
+    ));
+
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    for expected in ["Request increase", "Keep waiting", "Resuming in "] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}: {rendered}"
+        );
+    }
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::SendAddCreditsNudgeEmail {
+            credit_type: AddCreditsNudgeCreditType::UsageLimit,
+        })
+    ));
+}
+
+#[tokio::test]
 async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;

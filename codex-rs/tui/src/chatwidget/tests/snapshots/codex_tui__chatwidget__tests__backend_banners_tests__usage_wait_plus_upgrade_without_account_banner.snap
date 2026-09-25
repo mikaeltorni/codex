@@ -1,0 +1,17 @@
+---
+source: tui/src/chatwidget/tests/backend_banners_tests.rs
+assertion_line: 444
+expression: stable
+---
+  Usage limit reached (Auto-continue is enabled)
+  Your turn will automatically continue when the usage limit resets.
+
+› 1. Upgrade
+  2. Keep waiting
+
+  Press a number to choose · ↑/↓ to navigate · enter to select
+
+
+› Ask Codex to do anything
+
+  test-model-a default · /tmp/project
