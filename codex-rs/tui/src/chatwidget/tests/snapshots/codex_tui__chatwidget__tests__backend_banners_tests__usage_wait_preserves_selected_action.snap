@@ -2,7 +2,7 @@
 source: tui/src/chatwidget/tests/backend_banners_tests.rs
 expression: stable
 ---
-  Usage limit reached (Auto-continue is enabled)
+  Workspace usage limit reached (Auto-continue is enabled)
   Ask your owner for credits or switch to another model.
 
   1. Request increase
