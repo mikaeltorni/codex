@@ -71,18 +71,6 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
-### Waiting for a usage limit to reset
-
-To keep the current turn active when the service reports a usage limit with a reset time, opt in when starting the CLI:
-
-```shell
-codex -c auto_resume_on_usage_limit=true
-```
-
-Codex displays a countdown and retries the pending request shortly after the reported reset. Keep the process running while it waits. **Keep waiting** hides the recovery choices without cancelling the turn; **Esc** interrupts the turn. Recovery choices use your configured list navigation keys. If no reset time is available, Codex reports the limit normally. Automatic retry is disabled by default.
-
-The wait message identifies personal and workspace accounts when the plan is known. Personal plans may offer an upgrade; workspace accounts offer a limit-increase request. These actions require your selection. Waiting or hiding the choices never requests an increase or opens an upgrade page.
-
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
