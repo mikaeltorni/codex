@@ -21,7 +21,6 @@ use crate::tui::TuiEvent;
 use crate::update_action::UpdateAction;
 #[cfg(not(debug_assertions))]
 use crate::updates;
-use crate::version::CODEX_CLI_VERSION;
 #[cfg(not(debug_assertions))]
 use color_eyre::Result;
 use crossterm::event::KeyCode;
@@ -127,7 +126,7 @@ impl UpdatePromptScreen {
         Self {
             request_frame,
             latest_version,
-            current_version: CODEX_CLI_VERSION.to_string(),
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
             update_action,
             highlighted: UpdateSelection::UpdateNow,
             selection: None,
