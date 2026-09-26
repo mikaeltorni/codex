@@ -347,11 +347,12 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     .unwrap();
     response.rate_limits.plan_type = Some(PlanType::Plus);
     chat.update_backend_banner(&response);
+    chat.on_rate_limit_snapshot(Some(response.rate_limits));
     chat.refresh_usage_limit_wait_for_time_tick();
 
     let rendered = render_bottom_popup(&chat, /*width*/ 90);
     for action in [
-        "Usage limit reached (Auto-continue is enabled)",
+        "Personal usage limit reached (Auto-continue is enabled)",
         "Upgrade your subscription to continue sooner, or wait for your",
         "usage limit to reset.",
         "Your turn will resume automatically.",
@@ -522,6 +523,71 @@ async fn usage_wait_countdown_tick_preserves_selected_recovery_action() {
         Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
     ));
     assert!(events.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn usage_wait_identifies_personal_and_workspace_accounts() {
+    for (plan, title, action, snapshot) in [
+        (
+            PlanType::Plus,
+            "Personal usage limit reached",
+            Some("Upgrade"),
+            "usage_wait_personal_plus",
+        ),
+        (
+            PlanType::Pro,
+            "Personal usage limit reached",
+            None,
+            "usage_wait_personal_pro",
+        ),
+        (
+            PlanType::Team,
+            "Workspace usage limit reached",
+            Some("Request increase"),
+            "usage_wait_workspace",
+        ),
+        (
+            PlanType::Unknown,
+            "Usage limit reached",
+            None,
+            "usage_wait_unknown_plan",
+        ),
+    ] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(plan);
+        chat.bottom_pane.set_task_running(/*running*/ true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::RefreshRateLimits { .. })
+        ));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert!(rendered.contains(title), "{rendered}");
+        if let Some(action) = action {
+            assert!(rendered.contains(action), "{rendered}");
+        }
+        let stable = rendered
+            .lines()
+            .map(|line| {
+                if line.contains("Resuming in ") {
+                    "• Resuming in <remaining> • esc to interrupt"
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!(snapshot, stable);
+        // Only select the passive action; a rendered recovery offer never sends a request.
+        let choice = if action.is_some() { '2' } else { '1' };
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char(choice), KeyModifiers::NONE));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+        ));
+        assert!(events.try_recv().is_err());
+    }
 }
 
 #[tokio::test]

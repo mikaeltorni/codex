@@ -4,6 +4,7 @@ use super::ChatWidget;
 use crate::app_event::AppEvent;
 use crate::bottom_pane::BannerDismissal;
 use crate::bottom_pane::SelectionItem;
+use codex_protocol::account::PlanType;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -77,13 +78,28 @@ impl ChatWidget {
             self.bottom_pane.set_inline_banner(None);
         } else {
             let mut banner = self.usage_limit_wait_backend_banner();
-            banner.title = "Usage limit reached (Auto-continue is enabled)".to_string();
-            if banner.actions.iter().any(|action| action.name == "Upgrade") {
+            // Account identity owns this copy; backend action labels can change independently.
+            let plan = self.plan_type.filter(|_| self.has_chatgpt_account);
+            let workspace = plan.is_some_and(PlanType::is_workspace_account);
+            banner.title = if workspace {
+                "Workspace usage limit reached (Auto-continue is enabled)"
+            } else if plan.is_some_and(|plan| plan != PlanType::Unknown) {
+                "Personal usage limit reached (Auto-continue is enabled)"
+            } else {
+                "Usage limit reached (Auto-continue is enabled)"
+            }
+            .to_string();
+            if matches!(
+                plan,
+                Some(PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::ProLite)
+            ) {
                 banner.description = "Upgrade your subscription to continue sooner, or wait for your usage limit to reset. Your turn will resume automatically.".to_string();
             } else if banner.description.is_empty() {
-                banner.description =
+                banner.description = if workspace {
+                    "Your turn will automatically continue when your workspace usage limit resets. Request a limit increase to continue sooner."
+                } else {
                     "Your turn will automatically continue when the usage limit resets."
-                        .to_string();
+                }.to_string();
             }
             let thread_id = self.thread_id();
             banner.actions.push(SelectionItem {
