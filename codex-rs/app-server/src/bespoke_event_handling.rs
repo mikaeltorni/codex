@@ -83,6 +83,7 @@ use codex_app_server_protocol::TurnPlanStep;
 use codex_app_server_protocol::TurnPlanUpdatedNotification;
 use codex_app_server_protocol::TurnStartedNotification;
 use codex_app_server_protocol::TurnStatus;
+use codex_app_server_protocol::UsageLimitWaitChangedNotification;
 use codex_app_server_protocol::WarningNotification;
 use codex_app_server_protocol::build_item_from_guardian_event;
 use codex_app_server_protocol::guardian_auto_approval_review_notification;
@@ -267,6 +268,26 @@ pub(crate) async fn apply_bespoke_event_handling(
                         turn_id: event_turn_id,
                         provider: event.provider,
                         message: event.message,
+                    },
+                ))
+                .await;
+        }
+        EventMsg::UsageLimitWaitStarted(event) => {
+            outgoing
+                .send_server_notification(ServerNotification::UsageLimitWaitChanged(
+                    UsageLimitWaitChangedNotification {
+                        thread_id: conversation_id.to_string(),
+                        retry_at_ms: Some(event.retry_at_ms),
+                    },
+                ))
+                .await;
+        }
+        EventMsg::UsageLimitWaitEnded => {
+            outgoing
+                .send_server_notification(ServerNotification::UsageLimitWaitChanged(
+                    UsageLimitWaitChangedNotification {
+                        thread_id: conversation_id.to_string(),
+                        retry_at_ms: None,
                     },
                 ))
                 .await;

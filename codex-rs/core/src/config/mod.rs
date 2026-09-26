@@ -679,6 +679,9 @@ pub struct Config {
     /// Defaults to `false`.
     pub show_raw_agent_reasoning: bool,
 
+    /// Whether usage-limit errors with a reset timestamp pause and retry the current turn.
+    pub auto_resume_on_usage_limit: bool,
+
     /// Base instructions override.
     pub base_instructions: Option<String>,
 
@@ -4358,6 +4361,7 @@ impl Config {
                 .show_raw_agent_reasoning
                 .or(show_raw_agent_reasoning)
                 .unwrap_or(false),
+            auto_resume_on_usage_limit: cfg.auto_resume_on_usage_limit.unwrap_or(false),
             guardian_policy_config,
             guardian_extra_policy,
             guardian_policy_template,

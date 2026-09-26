@@ -389,6 +389,10 @@ pub struct ConfigToml {
     /// Defaults to `false`.
     pub show_raw_agent_reasoning: Option<bool>,
 
+    /// Retry a usage-limited sampling request in the same turn after its reset time.
+    /// Defaults to false; turns without a reset timestamp still fail immediately.
+    pub auto_resume_on_usage_limit: Option<bool>,
+
     pub model_reasoning_effort: Option<ReasoningEffort>,
     pub plan_mode_reasoning_effort: Option<ReasoningEffort>,
     pub model_reasoning_summary: Option<ReasoningSummary>,

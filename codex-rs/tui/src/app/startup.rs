@@ -1233,6 +1233,17 @@ See the Codex keymap documentation for supported actions and examples."
                         AppRunControl::Continue
                     }
                     () = async {
+                        match app.chat_widget.usage_limit_wait_next_tick {
+                            Some(deadline) => {
+                                tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
+                            }
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        app.chat_widget.refresh_usage_limit_wait_for_time_tick();
+                        AppRunControl::Continue
+                    }
+                    () = async {
                         match app.commit_animation.as_mut() {
                             Some(interval) => {
                                 interval.tick().await;
