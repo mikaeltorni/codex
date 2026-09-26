@@ -39,6 +39,7 @@ use crate::session::daemon_recovery::RecordedTurnInput;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
+use crate::session::usage_limit_wait::wait_for_usage_limit_reset;
 use crate::skills::emit_explicit_skill_invocations;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::InFlightFuture;
@@ -106,7 +107,6 @@ use codex_protocol::protocol::ReasoningRawContentDeltaEvent;
 use codex_protocol::protocol::SafetyBufferingEvent;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::TurnDiffEvent;
-use codex_protocol::protocol::UsageLimitWaitEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
 use codex_skills::ToolMentionKind;
@@ -1675,40 +1675,13 @@ async fn run_sampling_request(
                     if original_input.is_none() {
                         original_input = Some(prompt.input);
                     }
-                    // Backend quota state can trail the advertised reset. The margin
-                    // also prevents a stale, already-past reset from spinning on 429s.
-                    let wait_duration = resets_at
-                        .signed_duration_since(chrono::Utc::now())
-                        .to_std()
-                        .unwrap_or_default()
-                        .saturating_add(std::time::Duration::from_secs(5));
-                    let retry_at_ms = chrono::Utc::now().timestamp_millis().saturating_add(
-                        i64::try_from(wait_duration.as_millis()).unwrap_or(i64::MAX),
-                    );
-                    sess.send_event(
+                    wait_for_usage_limit_reset(
+                        &sess,
                         &turn_context,
-                        EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms }),
+                        resets_at,
+                        &cancellation_token,
                     )
-                    .await;
-                    info!(%resets_at, wait_seconds = wait_duration.as_secs(), "Waiting for usage limit reset");
-                    tokio::select! {
-                        biased;
-                        _ = cancellation_token.cancelled() => {
-                            info!("Usage limit wait cancelled");
-                            sess.send_event(
-                                &turn_context,
-                                EventMsg::UsageLimitWaitEnded,
-                            )
-                            .await;
-                            return Err(CodexErr::TurnAborted);
-                        }
-                        _ = tokio::time::sleep(wait_duration) => {}
-                    }
-                    // End the wait before retrying: the TUI starts a fresh working timer here,
-                    // even if the next sampling request takes time or hits another usage limit.
-                    sess.send_event(&turn_context, EventMsg::UsageLimitWaitEnded)
-                        .await;
-                    info!("Usage limit reset wait complete; retrying sampling request");
+                    .await?;
                     continue;
                 }
                 _ => err,

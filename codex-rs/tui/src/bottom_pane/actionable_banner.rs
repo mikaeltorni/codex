@@ -8,6 +8,7 @@ use super::BottomPaneView;
 use super::SelectionItem;
 use super::SelectionViewParams;
 use super::list_selection_view::ListSelectionView;
+use crate::keymap::ListAction;
 use crate::render::Insets;
 use crate::render::RectExt;
 use crate::render::renderable::Renderable;
@@ -186,19 +187,31 @@ impl BottomPane {
             for item in &mut params.items {
                 item.dismiss_on_select = false;
             }
-            let hint = if interactive_while_task_running && has_actions {
-                "Press a number to choose · ↑/↓ to navigate · enter to select"
+            let hint: Line<'static> = if interactive_while_task_running && has_actions {
+                let mut spans = vec!["Press a number to choose".dim()];
+                for (action, label) in [
+                    (ListAction::MoveUp, "to move up"),
+                    (ListAction::MoveDown, "to move down"),
+                    (ListAction::Accept, "to select"),
+                ] {
+                    if let Some(hint) = self.keymap.list.primary_hint(action) {
+                        spans.push(" · ".dim());
+                        spans.extend(hint.spans());
+                        spans.push(format!(" {label}").dim());
+                    }
+                }
+                spans.into()
             } else {
-                match (dismissal, has_actions) {
+                let hint = match (dismissal, has_actions) {
                     (BannerDismissal::Persistent, true) => "Press a number to choose",
                     (BannerDismissal::Persistent, false) => "",
                     (BannerDismissal::Dismissible, true) => {
                         "Press a number to choose · esc to dismiss · type to continue"
                     }
                     (BannerDismissal::Dismissible, false) => "esc to dismiss · type to continue",
-                }
+                };
+                hint.dim().into()
             };
-            let hint: Line<'static> = hint.dim().into();
             params.footer_hint = Some(hint.clone());
             InlineBanner {
                 content: if has_actions {
@@ -251,7 +264,6 @@ impl BottomPane {
             || self.composer.is_in_paste_burst()
             || self.composer_should_handle_vim_insert_escape(key)
             || key.kind != KeyEventKind::Press
-            || key.modifiers != KeyModifiers::NONE
         {
             return false;
         }
@@ -267,10 +279,10 @@ impl BottomPane {
         }
         match key.code {
             KeyCode::Esc if banner.dismissal == BannerDismissal::Persistent => return false,
-            KeyCode::Esc => {
+            KeyCode::Esc if key.modifiers == KeyModifiers::NONE => {
                 banner.dismissed = true;
             }
-            KeyCode::Char(digit @ '1'..='9') => {
+            KeyCode::Char(digit @ '1'..='9') if key.modifiers == KeyModifiers::NONE => {
                 if digit as usize - '1' as usize >= banner.visible_action_count.get() {
                     return false;
                 }
@@ -280,8 +292,11 @@ impl BottomPane {
                 view.handle_key_event(key);
                 let _ = view.take_last_selected_index();
             }
-            KeyCode::Up | KeyCode::Down | KeyCode::Enter
-                if banner.interactive_while_task_running =>
+            _ if banner.interactive_while_task_running
+                && matches!(
+                    self.keymap.list.action_for(key),
+                    Some(ListAction::MoveUp | ListAction::MoveDown | ListAction::Accept)
+                ) =>
             {
                 let InlineBannerContent::Actions(view) = &mut banner.content else {
                     return false;

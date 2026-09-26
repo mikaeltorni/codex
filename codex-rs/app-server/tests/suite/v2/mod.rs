@@ -161,3 +161,6 @@ mod workspace_routing;
 
 mod user_verification;
 mod user_verification_mcp;
+
+#[path = "usage_limit_wait_tests.rs"]
+mod usage_limit_wait;
