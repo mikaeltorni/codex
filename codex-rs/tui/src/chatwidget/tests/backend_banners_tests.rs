@@ -486,6 +486,45 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
 }
 
 #[tokio::test]
+async fn usage_wait_countdown_tick_preserves_selected_recovery_action() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Team);
+    let mut response = banner_response(
+        /*presentation*/ None,
+        json!([{"action": "request_increase", "label": "Request increase"}]),
+    );
+    response.rate_limits.plan_type = Some(PlanType::Team);
+    chat.update_backend_banner(&response);
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits { .. })
+    ));
+    let _ = render_bottom_popup(&chat, /*width*/ 90);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.refresh_usage_limit_wait_for_time_tick();
+    // An unchanged account poll must also leave the selected action in place.
+    chat.update_backend_banner(&response);
+    chat.on_rate_limit_snapshot(Some(response.rate_limits));
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    let stable = rendered
+        .lines()
+        .filter(|line| !line.contains("Resuming in"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_preserves_selected_action", stable);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    // A redraw must not move selection back to the request-increase action.
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+    ));
+    assert!(events.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn usage_wait_team_request_is_available_without_account_banner() {
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;

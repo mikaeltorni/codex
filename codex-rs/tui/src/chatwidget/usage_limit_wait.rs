@@ -1,9 +1,11 @@
 //! Renders and refreshes the visible auto-resume countdown while a turn waits for quota reset.
 
-use super::*;
+use super::ChatWidget;
 use crate::app_event::AppEvent;
 use crate::bottom_pane::BannerDismissal;
 use crate::bottom_pane::SelectionItem;
+use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -48,15 +50,19 @@ impl ChatWidget {
     }
 
     pub(crate) fn refresh_usage_limit_wait_for_time_tick(&mut self) {
-        if self.usage_limit_wait_retry_at_ms.is_none() {
+        let Some(retry_at_ms) = self.usage_limit_wait_retry_at_ms else {
             self.usage_limit_wait_next_tick = None;
             return;
-        }
+        };
         self.usage_limit_wait_next_tick = Some(Instant::now() + Duration::from_secs(1));
-        self.refresh_usage_limit_wait_banner();
+        // Rebuilding the menu here would reset its selection every second, potentially
+        // activating a different recovery action when the user presses Enter.
+        self.bottom_pane
+            .set_status_resume_countdown(Some(format_remaining_time(retry_at_ms)));
+        self.request_redraw();
     }
 
-    fn refresh_usage_limit_wait_banner(&mut self) {
+    pub(super) fn refresh_usage_limit_wait_banner(&mut self) {
         let Some(retry_at_ms) = self.usage_limit_wait_retry_at_ms else {
             self.bottom_pane.set_status_resume_countdown(None);
             self.bottom_pane.set_inline_banner(None);
@@ -70,7 +76,7 @@ impl ChatWidget {
         if self.usage_limit_wait_banner_dismissed {
             self.bottom_pane.set_inline_banner(None);
         } else {
-            let mut banner = self.usage_limit_wait_backend_banner().unwrap_or_default();
+            let mut banner = self.usage_limit_wait_backend_banner();
             banner.title = "Usage limit reached (Auto-continue is enabled)".to_string();
             if banner.actions.iter().any(|action| action.name == "Upgrade") {
                 banner.description = "Upgrade your subscription to continue sooner, or wait for your usage limit to reset. Your turn will resume automatically.".to_string();
@@ -129,7 +135,8 @@ fn format_remaining_seconds(remaining_seconds: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::format_remaining_seconds;
+    use super::format_remaining_time_at;
     use pretty_assertions::assert_eq;
 
     #[test]

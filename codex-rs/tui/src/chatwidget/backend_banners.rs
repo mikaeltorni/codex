@@ -353,6 +353,7 @@ impl ChatWidget {
                         == new.blocked_model_slug.as_ref().or(new.model_slug.as_ref())
                     && old.fallback_model_slugs == new.fallback_model_slugs
             });
+        let banner_changed = self.backend_banner_state.banner != banner;
         self.backend_banner_state.banner = banner;
         if !same_occurrence {
             self.backend_banner_state.shown = false;
@@ -363,7 +364,11 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        self.refresh_backend_banner_visibility();
+        if banner_changed && self.usage_limit_wait_retry_at_ms.is_some() {
+            self.refresh_usage_limit_wait_banner();
+        } else {
+            self.refresh_backend_banner_visibility();
+        }
     }
 
     fn reserve_notice_already_shown(&self) -> bool {
@@ -379,7 +384,7 @@ impl ChatWidget {
 
     /// Reuse account recovery choices during an auto-resume wait, even if the earlier account
     /// notice was dismissed, and supply the plan's upgrade/request action if no notice arrived.
-    pub(super) fn usage_limit_wait_backend_banner(&mut self) -> Option<ActionableBanner> {
+    pub(super) fn usage_limit_wait_backend_banner(&mut self) -> ActionableBanner {
         let mut content = self
             .applicable_backend_banner()
             .map(|banner| self.backend_banner_actionable_content(&banner.for_usage_limit_wait()))
@@ -401,7 +406,7 @@ impl ChatWidget {
         if let Some(switch) = self.backend_banner_fallback()
             && let Some(thread_id) = self.thread_id()
         {
-            let model = switch.model.model.clone();
+            let model = switch.model.model;
             let model_name = self.model_catalog.display_name(&model).to_string();
             content.actions.push(SelectionItem {
                 name: format!("Switch to {model_name}"),
@@ -411,7 +416,7 @@ impl ChatWidget {
                 ..Default::default()
             });
         }
-        Some(content)
+        content
     }
 
     fn applicable_backend_banner(&self) -> Option<&BackendBanner> {

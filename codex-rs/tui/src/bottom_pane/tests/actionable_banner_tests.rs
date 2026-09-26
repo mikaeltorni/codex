@@ -292,3 +292,47 @@ fn information_banner_preserves_input_and_honors_dismissal() {
         assert_eq!(pane.composer_text(), "1");
     }
 }
+
+#[test]
+fn running_banner_uses_remapped_navigation_and_accept() {
+    let (tx, mut rx) = unbounded_channel();
+    let mut pane = test_pane(AppEventSender::new(tx));
+    let mut keymap = RuntimeKeymap::defaults();
+    keymap.list.move_down = vec![crate::key_hint::plain(KeyCode::F(/*n*/ 2))];
+    keymap.list.accept = vec![crate::key_hint::plain(KeyCode::F(/*n*/ 3))];
+    pane.set_keymap_bindings(&keymap);
+    pane.set_task_running(/*running*/ true);
+    pane.set_inline_banner(Some(ActionableBanner {
+        title: "Usage limit reached".into(),
+        actions: ["First", "Keep waiting"]
+            .into_iter()
+            .map(|name| SelectionItem {
+                name: name.into(),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::OpenUrlInBrowser { url: name.into() });
+                })],
+                ..Default::default()
+            })
+            .collect(),
+        visible_while_task_running: true,
+        interactive_while_task_running: true,
+        ..Default::default()
+    }));
+    let width = 80;
+    let area = Rect::new(
+        /*x*/ 0,
+        /*y*/ 0,
+        width,
+        pane.desired_height(width),
+    );
+    let rendered = render_snapshot(&pane, area);
+    assert!(rendered.contains("f2 to move down"), "{rendered}");
+    assert!(rendered.contains("f3 to select"), "{rendered}");
+    insta::assert_snapshot!("running_banner_remapped_keys", rendered);
+    assert!(pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 2))));
+    assert!(pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+    assert!(
+        matches!(rx.try_recv(), Ok(AppEvent::OpenUrlInBrowser { url }) if url == "Keep waiting")
+    );
+    assert!(rx.try_recv().is_err());
+}
