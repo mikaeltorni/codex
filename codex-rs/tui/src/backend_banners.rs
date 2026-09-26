@@ -58,9 +58,18 @@ impl BackendBanner {
             PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::ProLite => {
                 ("open_pricing_dialog", "Upgrade")
             }
-            plan if plan.is_workspace_account() => ("request_increase", "Request increase"),
+            PlanType::Team
+            | PlanType::SelfServeBusinessProLite
+            | PlanType::SelfServeBusinessUsageBased
+            | PlanType::Business
+            | PlanType::Ent26
+            | PlanType::EnterpriseCbpAutomation
+            | PlanType::EnterpriseCbpUsageBased
+            | PlanType::Enterprise
+            | PlanType::Edu
+            | PlanType::EduPlus
+            | PlanType::EduPro => ("request_increase", "Request increase"),
             PlanType::Pro | PlanType::Unknown => return None,
-            _ => return None,
         };
         Some(Self {
             banner_type: "usage_limit_recovery_fallback".to_string(),
