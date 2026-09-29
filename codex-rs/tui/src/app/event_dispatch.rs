@@ -1557,6 +1557,18 @@ impl App {
                     self.refresh_rate_limits(app_server, RateLimitRefreshOrigin::Periodic);
                 }
             }
+            AppEvent::SelectLunaReserve { thread_id } => {
+                if self.active_thread_id == Some(thread_id)
+                    && self.chat_widget.thread_id() == Some(thread_id)
+                {
+                    self.select_luna_reserve_from_banner(app_server, thread_id)
+                        .await;
+                    if !self.rate_limit_refresh_state.has_pending_recovery() {
+                        self.chat_widget.finish_rate_limit_recovery();
+                    }
+                    self.refresh_rate_limits(app_server, RateLimitRefreshOrigin::Periodic);
+                }
+            }
             AppEvent::DismissUsageLimitWaitBanner { thread_id } => {
                 if self.active_thread_id == thread_id
                     && self.chat_widget.thread_id() == thread_id

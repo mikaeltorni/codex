@@ -351,14 +351,19 @@ async fn backend_banner_fallback_handles_settings_failure_and_queued_manual_sele
             fallback_response()
         };
         app.chat_widget.update_backend_banner(&response);
-        app.apply_backend_banner_fallback(&mut server).await;
+        if use_reserve {
+            app.select_luna_reserve_from_banner(&mut server, id).await;
+        } else {
+            app.apply_backend_banner_fallback(&mut server).await;
+        }
         let queued = std::iter::from_fn(|| events.try_recv().ok()).collect::<Vec<_>>();
         let switch_notices = queued
             .iter()
             .filter(|event| match event {
                 AppEvent::InsertHistoryCell(cell) => {
-                    lines_to_single_string(&cell.display_lines(/*width*/ 80))
-                        .contains("Automatically switched")
+                    let notice = lines_to_single_string(&cell.display_lines(/*width*/ 80));
+                    notice.contains("Automatically switched")
+                        || (use_reserve && notice.contains("Switched to Luna Reserve"))
                 }
                 _ => false,
             })

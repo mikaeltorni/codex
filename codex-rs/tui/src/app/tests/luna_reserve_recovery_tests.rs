@@ -58,6 +58,46 @@ pub(super) fn configure_reserve_catalog(app: &mut App) {
 }
 
 #[tokio::test]
+async fn luna_reserve_requires_explicit_user_selection() -> Result<()> {
+    let (mut app, _events, _ops) = make_test_app_with_channels().await;
+    let (mut server, requests, proxy) =
+        backend_banner_fallback_tests::start_fallback_thread(&mut app).await?;
+    configure_reserve_catalog(&mut app);
+    app.chat_widget.update_backend_banner(&reserve_response());
+    let thread_id = app.chat_widget.thread_id().unwrap();
+
+    app.apply_backend_banner_fallback(&mut server).await;
+
+    assert_eq!(app.chat_widget.current_model(), "gpt-5.5");
+    assert_eq!(
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.method == "thread/settings/update")
+            .count(),
+        0
+    );
+
+    app.select_luna_reserve_from_banner(&mut server, thread_id)
+        .await;
+
+    assert_eq!(app.chat_widget.current_model(), "gpt-reserve");
+    assert_eq!(
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.method == "thread/settings/update")
+            .count(),
+        1
+    );
+    server.shutdown().await?;
+    proxy.await??;
+    Ok(())
+}
+
+#[tokio::test]
 async fn luna_reserve_recovery_survives_task_reconstruction() -> Result<()> {
     let (mut app, _events, _ops) = make_test_app_with_channels().await;
     let (mut server, requests, proxy) =
@@ -66,7 +106,9 @@ async fn luna_reserve_recovery_survives_task_reconstruction() -> Result<()> {
     app.chat_widget
         .set_reasoning_effort(Some(ReasoningEffortConfig::High));
     app.chat_widget.update_backend_banner(&reserve_response());
-    app.apply_backend_banner_fallback(&mut server).await;
+    let thread_id = app.chat_widget.thread_id().unwrap();
+    app.select_luna_reserve_from_banner(&mut server, thread_id)
+        .await;
     let mut resumed = app.primary_session_configured.clone().unwrap();
     resumed.model = "gpt-reserve".into();
     resumed.collaboration_mode = Some(Box::new(app.chat_widget.effective_collaboration_mode()));
@@ -149,10 +191,25 @@ async fn luna_reserve_entry_dispatches_an_already_queued_turn_with_accepted_sett
             },
         )
         .await?;
+        assert_eq!(app.chat_widget.current_model(), "gpt-5.5");
+        let thread_id = app.chat_widget.thread_id().unwrap();
+        app.handle_event(
+            &mut tui,
+            &mut server,
+            AppEvent::SelectLunaReserve { thread_id },
+        )
+        .await?;
         app.handle_event(&mut tui, &mut server, pending).await?;
         let sent = requests.lock().unwrap().clone();
         let methods: Vec<_> = sent.iter().map(|request| request.method.as_str()).collect();
-        assert_eq!(methods, ["thread/settings/update", "turn/start"]);
+        assert_eq!(
+            methods,
+            [
+                "thread/settings/update",
+                "turn/start",
+                "account/rateLimits/read"
+            ]
+        );
         let settings: ThreadSettingsUpdateParams =
             serde_json::from_value(sent[0].params.clone().unwrap())?;
         let turn: codex_app_server_protocol::TurnStartParams =
@@ -205,6 +262,14 @@ async fn luna_reserve_recovery_restores_task_and_pending_turn_after_fresh_backen
                 hard_stop_generation: generation,
                 result: Ok(reserve_response()),
             },
+        )
+        .await?;
+        assert_eq!(app.chat_widget.current_model(), "gpt-5.5");
+        let thread_id = app.chat_widget.thread_id().unwrap();
+        app.handle_event(
+            &mut tui,
+            &mut server,
+            AppEvent::SelectLunaReserve { thread_id },
         )
         .await?;
         assert_eq!(app.chat_widget.current_model(), "gpt-reserve");
@@ -263,7 +328,9 @@ async fn luna_reserve_recovery_restores_task_and_pending_turn_after_fresh_backen
         if model == "gpt-5.5" && effort == original_mode.reasoning_effort()
             && collaboration_mode == Some(original_mode.clone()));
         let sent = requests.lock().unwrap().clone();
-        assert_eq!(sent.len(), 2);
+        assert_eq!(sent.len(), 3);
+        assert_eq!(sent[1].method, "thread/settings/update");
+        assert_eq!(sent[2].method, "account/rateLimits/read");
         let restored: ThreadSettingsUpdateParams =
             serde_json::from_value(sent[1].params.clone().unwrap())?;
         assert_eq!(
@@ -309,7 +376,9 @@ async fn luna_reserve_recovery_requires_permission_and_no_remaining_blocker() ->
         backend_banner_fallback_tests::start_fallback_thread(&mut app).await?;
     configure_reserve_catalog(&mut app);
     app.chat_widget.update_backend_banner(&reserve_response());
-    app.apply_backend_banner_fallback(&mut server).await;
+    let thread_id = app.chat_widget.thread_id().unwrap();
+    app.select_luna_reserve_from_banner(&mut server, thread_id)
+        .await;
     requests.lock().unwrap().clear();
     let mut recovered = reserve_response();
     recovered.rate_limit_upsell = None;
@@ -356,7 +425,9 @@ async fn luna_reserve_recovery_does_not_override_manual_choice_or_account_change
             backend_banner_fallback_tests::start_fallback_thread(&mut app).await?;
         configure_reserve_catalog(&mut app);
         app.chat_widget.update_backend_banner(&reserve_response());
-        app.apply_backend_banner_fallback(&mut server).await;
+        let thread_id = app.chat_widget.thread_id().unwrap();
+        app.select_luna_reserve_from_banner(&mut server, thread_id)
+            .await;
         requests.lock().unwrap().clear();
         let mut recovered = reserve_response();
         recovered.ordinary_usage_allowed = Some(true);

@@ -389,7 +389,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
     assert!(matches!(
         events.try_recv(),
-        Ok(AppEvent::ApplyBackendBannerFallback { thread_id: event_thread_id })
+        Ok(AppEvent::SelectLunaReserve { thread_id: event_thread_id })
             if event_thread_id == thread_id
     ));
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
@@ -404,6 +404,44 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let waiting = render_bottom_popup(&chat, /*width*/ 90);
     assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
     assert!(waiting.contains("Resuming in "), "{waiting}");
+}
+
+#[tokio::test]
+async fn luna_reserve_banner_offers_an_explicit_switch_action() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.requires_openai_auth = true;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+
+    let mut models = chat.model_catalog.try_list_models().unwrap();
+    let mut selected_model = models.first().unwrap().clone();
+    selected_model.model = "test-model-a".to_string();
+    models.push(selected_model.clone());
+    let mut reserve = selected_model;
+    reserve.model = crate::model_catalog::LUNA_RESERVE_MODEL.to_string();
+    reserve.display_name = "Luna Reserve".to_string();
+    reserve.show_in_picker = false;
+    models.push(reserve);
+    chat.model_catalog = Arc::new(ModelCatalog::new(models));
+
+    let mut response = banner_response(Some("dismissible"), json!([]));
+    let banner = response.rate_limit_upsell.as_mut().unwrap();
+    banner["banner_type"] = json!("luna_reserve");
+    banner["title"] = json!("Usage limit reached");
+    chat.update_backend_banner(&response);
+
+    assert_eq!(chat.current_model(), "test-model-a");
+    let rendered = render_bottom_popup(&chat, /*width*/ 80);
+    assert!(rendered.contains("Switch to Luna Reserve"), "{rendered}");
+    while events.try_recv().is_ok() {}
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::SelectLunaReserve { thread_id: event_thread_id })
+            if event_thread_id == thread_id
+    ));
 }
 
 #[tokio::test]

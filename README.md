@@ -71,6 +71,12 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+### Choosing Luna Reserve
+
+Run `codex` as usual. When an eligible usage-limit banner offers **Switch to Luna Reserve**, selecting it switches the current task to `gpt-reserve`. Codex does not enter Luna Reserve automatically, and this choice does not change the configured default model. When ordinary usage becomes available again, the task returns to its previous model.
+
+The [Codex configuration basics](https://developers.openai.com/codex/config-basic/) and [configuration reference](https://developers.openai.com/codex/config-reference/) document the `model` default but do not document a `gpt-reserve` opt-out setting.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
