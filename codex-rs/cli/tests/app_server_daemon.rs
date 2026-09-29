@@ -657,7 +657,8 @@ fn packaged_daemon_launch(action: &str, initial: InitialDaemon) -> Result<()> {
         assert_eq!(standalone.join("current").canonicalize()?, cli_selection);
     }
     if action == "bootstrap" {
-        assert_eq!(output["autoUpdateEnabled"], false);
+        // TestDaemon retains a stable latest-channel marker for this package.
+        assert_eq!(output["autoUpdateEnabled"], true);
     }
     Ok(())
 }
