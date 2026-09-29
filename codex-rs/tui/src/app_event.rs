@@ -661,6 +661,11 @@ pub(crate) enum AppEvent {
         thread_id: ThreadId,
     },
 
+    /// Switch to Luna Reserve only after the user chooses that recovery action.
+    SelectLunaReserve {
+        thread_id: ThreadId,
+    },
+
     /// Hide the auto-resume usage-limit actions while the active turn keeps waiting.
     DismissUsageLimitWaitBanner {
         thread_id: Option<ThreadId>,

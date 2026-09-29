@@ -385,9 +385,13 @@ impl ChatWidget {
     /// Reuse account recovery choices during an auto-resume wait, even if the earlier account
     /// notice was dismissed, and supply the plan's upgrade/request action if no notice arrived.
     pub(super) fn usage_limit_wait_backend_banner(&mut self) -> ActionableBanner {
-        let mut content = self
+        let banner = self
             .applicable_backend_banner()
-            .map(|banner| self.backend_banner_actionable_content(&banner.for_usage_limit_wait()))
+            .cloned()
+            .map(|banner| banner.for_usage_limit_wait());
+        let mut content = banner
+            .as_ref()
+            .map(|banner| self.backend_banner_actionable_content(banner))
             .unwrap_or_default();
         if self.has_chatgpt_account
             && let Some(plan_type) = self.plan_type
@@ -404,6 +408,7 @@ impl ChatWidget {
             }
         }
         if let Some(switch) = self.backend_banner_fallback()
+            && switch.model.model != LUNA_RESERVE_MODEL
             && let Some(thread_id) = self.thread_id()
         {
             let model = switch.model.model;
@@ -448,14 +453,36 @@ impl ChatWidget {
         matches_selected_model.then_some(banner)
     }
 
-    fn backend_banner_actionable_content(&self, banner: &BackendBanner) -> ActionableBanner {
+    fn backend_banner_actionable_content(&mut self, banner: &BackendBanner) -> ActionableBanner {
         let mut content = banner.actionable_banner(self.clock_format);
         if banner.banner_type == LUNA_RESERVE_BANNER && self.current_model() != LUNA_RESERVE_MODEL {
             content.title = "Usage limit reached".to_string();
             content.description =
                 "Your included usage is exhausted. Choose an option below to continue.".to_string();
+            if let Some(action) = self.luna_reserve_switch_action() {
+                content.actions.push(action);
+            }
         }
         content
+    }
+
+    fn luna_reserve_switch_action(&mut self) -> Option<SelectionItem> {
+        let switch = self.backend_banner_fallback()?;
+        if switch.model.model != LUNA_RESERVE_MODEL {
+            return None;
+        }
+        let thread_id = self.thread_id()?;
+        let model_name = self
+            .model_catalog
+            .display_name(&switch.model.model)
+            .to_string();
+        Some(SelectionItem {
+            name: format!("Switch to {model_name}"),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::SelectLunaReserve { thread_id });
+            })],
+            ..Default::default()
+        })
     }
 
     fn observe_backend_banner_view(&mut self) {
@@ -475,13 +502,17 @@ impl ChatWidget {
         if self.usage_limit_wait_retry_at_ms.is_some() {
             return;
         }
-        let banner = self.applicable_backend_banner();
-        if banner == self.backend_banner_state.presented.as_ref() {
+        let banner = self.applicable_backend_banner().cloned();
+        if banner.as_ref() == self.backend_banner_state.presented.as_ref() {
             return;
         }
-        let is_reserve = banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
-        let content = banner.map(|banner| self.backend_banner_actionable_content(banner));
-        self.backend_banner_state.presented = banner.cloned();
+        let is_reserve = banner
+            .as_ref()
+            .is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
+        let content = banner
+            .as_ref()
+            .map(|banner| self.backend_banner_actionable_content(banner));
+        self.backend_banner_state.presented = banner;
         if content.is_some() {
             self.bottom_pane
                 .dismiss_view_by_id(super::rate_limits::WORKSPACE_NUDGE_VIEW_ID);
