@@ -69,7 +69,8 @@ impl BackendBanner {
             | PlanType::Edu
             | PlanType::EduPlus
             | PlanType::EduPro => ("request_increase", "Request increase"),
-            PlanType::Pro | PlanType::Unknown => return None,
+            // Only synthesize recovery actions for plans with a supported next step.
+            PlanType::Pro | PlanType::ProMax | PlanType::Unknown => return None,
         };
         Some(Self {
             banner_type: "usage_limit_recovery_fallback".to_string(),
