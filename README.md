@@ -71,6 +71,12 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+### Usage and resets
+
+Run `codex` to open the interactive CLI. Use `/status` to see current usage limits, or `/usage` to view analytics and redeem an available usage reset.
+
+When `auto_resume_on_usage_limit = true` is configured, the usage-limit waiting menu also shows **Redeem reset** when your account has resets available, including when Luna Reserve is unavailable. It opens the same reset picker as `/usage`: choose a specific reset, review its details, then confirm **Yes, use reset**. The confirmation defaults to **No, go back**; that option or Escape returns to the picker without using a reset.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
