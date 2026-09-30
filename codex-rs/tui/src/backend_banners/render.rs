@@ -2,11 +2,8 @@
 
 use super::BackendBanner;
 use super::BannerPresentation;
-use super::actions::BannerAction;
-use crate::app_event::AppEvent;
 use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
-use crate::bottom_pane::SelectionItem;
 use crate::clock_format::ClockFormat;
 use chrono::DateTime;
 use chrono::Local;
@@ -44,24 +41,7 @@ impl BackendBanner {
                     return None;
                 }
                 let action = self.resolve_action(&cta.action)?;
-                Some(SelectionItem {
-                    name: cta.label.clone(),
-                    actions: vec![Box::new(move |tx| {
-                        tx.send(match &action {
-                            BannerAction::OpenUrl(url) => {
-                                AppEvent::OpenUrlInBrowser { url: url.clone() }
-                            }
-                            BannerAction::NotifyOwner(credit_type) => {
-                                AppEvent::SendAddCreditsNudgeEmail {
-                                    credit_type: *credit_type,
-                                }
-                            }
-                            BannerAction::ResetUsage => AppEvent::OpenRateLimitResetCredits,
-                        })
-                    })],
-                    dismiss_on_select: false,
-                    ..Default::default()
-                })
+                Some(action.selection_item(cta.label.clone()))
             })
             .collect::<Vec<_>>();
         ActionableBanner {

@@ -1,6 +1,8 @@
 //! Map backend CTA names to existing CLI actions and desktop-equivalent browser destinations.
 
 use super::BackendBanner;
+use crate::app_event::AppEvent;
+use crate::bottom_pane::SelectionItem;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
 use codex_protocol::account::PlanType;
 
@@ -13,7 +15,52 @@ pub(super) enum BannerAction {
     ResetUsage,
 }
 
+impl BannerAction {
+    /// Route backend CTAs and local recovery choices through the same app events.
+    pub(super) fn selection_item(self, name: String) -> SelectionItem {
+        SelectionItem {
+            name,
+            actions: vec![Box::new(move |tx| {
+                tx.send(match &self {
+                    Self::OpenUrl(url) => AppEvent::OpenUrlInBrowser { url: url.clone() },
+                    Self::NotifyOwner(credit_type) => AppEvent::SendAddCreditsNudgeEmail {
+                        credit_type: *credit_type,
+                    },
+                    Self::ResetUsage => AppEvent::OpenRateLimitResetCredits,
+                });
+            })],
+            ..Default::default()
+        }
+    }
+}
+
 impl BackendBanner {
+    /// Supply one plan recovery action without manufacturing an account banner payload.
+    pub(crate) fn recovery_fallback_for_plan(plan_type: PlanType) -> Option<SelectionItem> {
+        let (action, label) = match plan_type {
+            PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::ProLite => (
+                BannerAction::OpenUrl(pricing_url(Some(plan_type))),
+                "Upgrade",
+            ),
+            PlanType::Team
+            | PlanType::SelfServeBusinessProLite
+            | PlanType::SelfServeBusinessUsageBased
+            | PlanType::Business
+            | PlanType::Ent26
+            | PlanType::EnterpriseCbpAutomation
+            | PlanType::EnterpriseCbpUsageBased
+            | PlanType::Enterprise
+            | PlanType::Edu
+            | PlanType::EduPlus
+            | PlanType::EduPro => (
+                BannerAction::NotifyOwner(AddCreditsNudgeCreditType::UsageLimit),
+                "Request increase",
+            ),
+            PlanType::Pro | PlanType::Unknown => return None,
+        };
+        Some(action.selection_item(label.to_string()))
+    }
+
     pub(super) fn resolve_action(&self, action: &str) -> Option<BannerAction> {
         match action {
             "notify_owner" | "contact_owner" => {
@@ -53,22 +100,7 @@ impl BackendBanner {
             "view_workspace_usage" | "increase_spend_cap" => WORKSPACE_USAGE_URL.to_string(),
             "open_plus_pricing_web" => "https://chatgpt.com/explore/plus".to_string(),
             "open_pro_pricing_web" => "https://chatgpt.com/explore/pro".to_string(),
-            "open_pricing_dialog" => {
-                let mut url = url::Url::parse("https://chatgpt.com/").ok()?;
-                let target = if matches!(self.plan_type, Some(PlanType::Plus | PlanType::ProLite)) {
-                    "pro"
-                } else {
-                    "plus"
-                };
-                url.query_pairs_mut()
-                    .append_pair("cta_tab", "personal")
-                    .append_pair("highlight_plan", target);
-                if self.plan_type == Some(PlanType::ProLite) {
-                    url.query_pairs_mut().append_pair("pro_variant", "2x");
-                }
-                url.set_fragment(Some("pricing"));
-                url.to_string()
-            }
+            "open_pricing_dialog" => pricing_url(self.plan_type),
             // Desktop-only referral and Premium dialogs need their own CLI flow.
             _ => return None,
         };
@@ -84,4 +116,22 @@ impl BackendBanner {
         }
         Some(BannerAction::OpenUrl(destination.to_string()))
     }
+}
+
+/// Keep the backend pricing CTA and the wait menu's upgrade destination aligned.
+fn pricing_url(plan_type: Option<PlanType>) -> String {
+    let mut url = url::Url::parse("https://chatgpt.com/").expect("valid pricing URL");
+    let target = if matches!(plan_type, Some(PlanType::Plus | PlanType::ProLite)) {
+        "pro"
+    } else {
+        "plus"
+    };
+    url.query_pairs_mut()
+        .append_pair("cta_tab", "personal")
+        .append_pair("highlight_plan", target);
+    if plan_type == Some(PlanType::ProLite) {
+        url.query_pairs_mut().append_pair("pro_variant", "2x");
+    }
+    url.set_fragment(Some("pricing"));
+    url.to_string()
 }
