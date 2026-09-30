@@ -3,6 +3,7 @@
 use super::ChatWidget;
 use crate::app_event::AppEvent;
 use crate::backend_banners::BackendBanner;
+use crate::backend_banners::rate_limit_reset_selection_item;
 use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
 use crate::bottom_pane::SelectionItem;
@@ -42,13 +43,9 @@ impl ChatWidget {
                     .any(|(action, _)| action == "reset_usage")
             })
         {
-            content.actions.push(SelectionItem {
-                name: "Redeem reset".to_string(),
-                actions: vec![Box::new(|tx| {
-                    tx.send(AppEvent::OpenRateLimitResetCredits);
-                })],
-                ..Default::default()
-            });
+            content
+                .actions
+                .push(rate_limit_reset_selection_item("Redeem reset".to_string()));
         }
         if let Some(switch) = self.backend_banner_fallback()
             && let Some(thread_id) = self.thread_id()

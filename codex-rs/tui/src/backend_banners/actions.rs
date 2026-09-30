@@ -2,12 +2,24 @@
 
 use super::BackendBanner;
 use crate::app_event::AppEvent;
+use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
 use codex_protocol::account::PlanType;
 
 const USAGE_URL: &str = "https://chatgpt.com/codex/settings/usage";
 const WORKSPACE_USAGE_URL: &str = "https://chatgpt.com/admin/usage-limits/workspace";
+
+/// Open the regular reset picker; selecting a credit still requires its existing confirmation.
+pub(crate) fn rate_limit_reset_selection_item(name: String) -> SelectionItem {
+    SelectionItem {
+        name,
+        actions: vec![Box::new(|tx| {
+            tx.send(AppEvent::OpenRateLimitResetCredits);
+        })],
+        ..Default::default()
+    }
+}
 
 pub(super) enum BannerAction {
     OpenUrl(String),
@@ -18,17 +30,18 @@ pub(super) enum BannerAction {
 impl BannerAction {
     /// Route backend CTAs and local recovery choices through the same app events.
     pub(super) fn selection_item(self, name: String) -> SelectionItem {
+        let action: SelectionAction = match self {
+            Self::OpenUrl(url) => Box::new(move |tx| {
+                tx.send(AppEvent::OpenUrlInBrowser { url: url.clone() });
+            }),
+            Self::NotifyOwner(credit_type) => Box::new(move |tx| {
+                tx.send(AppEvent::SendAddCreditsNudgeEmail { credit_type });
+            }),
+            Self::ResetUsage => return rate_limit_reset_selection_item(name),
+        };
         SelectionItem {
             name,
-            actions: vec![Box::new(move |tx| {
-                tx.send(match &self {
-                    Self::OpenUrl(url) => AppEvent::OpenUrlInBrowser { url: url.clone() },
-                    Self::NotifyOwner(credit_type) => AppEvent::SendAddCreditsNudgeEmail {
-                        credit_type: *credit_type,
-                    },
-                    Self::ResetUsage => AppEvent::OpenRateLimitResetCredits,
-                });
-            })],
+            actions: vec![action],
             ..Default::default()
         }
     }

@@ -1,3 +1,4 @@
+use crate::backend_banners::rate_limit_reset_selection_item;
 use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditOutcome;
 use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditResponse;
 use codex_app_server_protocol::RateLimitResetCreditsSummary;
@@ -56,14 +57,10 @@ impl ChatWidget {
                     ..Default::default()
                 },
                 SelectionItem {
-                    name: "Redeem reset".to_string(),
                     description: Some(reset_description),
                     is_disabled: !reset_action_enabled,
-                    actions: vec![Box::new(|tx| {
-                        tx.send(AppEvent::OpenRateLimitResetCredits);
-                    })],
                     dismiss_on_select: true,
-                    ..Default::default()
+                    ..rate_limit_reset_selection_item("Redeem reset".to_string())
                 },
             ],
             ..SelectionViewParams::picker()
@@ -308,12 +305,8 @@ impl ChatWidget {
             subtitle: Some(message.to_string()),
             items: vec![
                 SelectionItem {
-                    name: "Try again".to_string(),
-                    actions: vec![Box::new(|tx| {
-                        tx.send(AppEvent::OpenRateLimitResetCredits);
-                    })],
                     dismiss_on_select: true,
-                    ..Default::default()
+                    ..rate_limit_reset_selection_item("Try again".to_string())
                 },
                 SelectionItem {
                     name: "Close".to_string(),
