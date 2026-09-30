@@ -314,6 +314,7 @@ impl ChatWidget {
         self.observe_backend_banner_view();
         // Reset eligibility comes from the account read, independently of Reserve/upsell CTAs.
         // An omitted summary is not authoritative absence; keep the last known availability.
+        let reset_action_was_enabled = self.rate_limit_reset_action_enabled();
         let reset_availability_changed =
             response
                 .rate_limit_reset_credits
@@ -329,7 +330,7 @@ impl ChatWidget {
                     }
                     // The menu has one reset entry regardless of the count. Rebuild only when
                     // that entry appears/disappears, keeping selection stable for count updates.
-                    previous.is_some_and(|count| count > 0) != (credits.available_count > 0)
+                    reset_action_was_enabled != self.rate_limit_reset_action_enabled()
                 });
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners

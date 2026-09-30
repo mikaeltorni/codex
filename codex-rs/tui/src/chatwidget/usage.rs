@@ -30,16 +30,24 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    /// Unknown availability can be checked through the existing reset picker. Only an
+    /// authoritative empty balance or a non-ChatGPT account disables that action.
+    pub(super) fn rate_limit_reset_action_enabled(&self) -> bool {
+        self.has_chatgpt_account
+            && self
+                .available_rate_limit_reset_credits
+                .is_none_or(|count| count > 0)
+    }
+
     fn usage_menu_params(&self) -> SelectionViewParams {
         let reset_eligible = self.has_chatgpt_account;
-        let (reset_action_enabled, reset_description) =
-            match (reset_eligible, self.available_rate_limit_reset_credits) {
-                (true, Some(available_count)) if available_count > 0 => {
-                    (true, format!("{available_count} available"))
-                }
-                (true, None) => (true, "Check availability".to_string()),
-                (true, Some(_)) | (false, _) => (false, "None available".to_string()),
-            };
+        let reset_description = match (reset_eligible, self.available_rate_limit_reset_credits) {
+            (true, Some(available_count)) if available_count > 0 => {
+                format!("{available_count} available")
+            }
+            (true, None) => "Check availability".to_string(),
+            (true, Some(_)) | (false, _) => "None available".to_string(),
+        };
 
         SelectionViewParams {
             view_id: Some(USAGE_MENU_VIEW_ID),
@@ -58,7 +66,7 @@ impl ChatWidget {
                 },
                 SelectionItem {
                     description: Some(reset_description),
-                    is_disabled: !reset_action_enabled,
+                    is_disabled: !self.rate_limit_reset_action_enabled(),
                     dismiss_on_select: true,
                     ..rate_limit_reset_selection_item("Redeem reset".to_string())
                 },
