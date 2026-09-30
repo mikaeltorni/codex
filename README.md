@@ -77,6 +77,10 @@ Run `codex` as usual. When an eligible usage-limit banner offers **Switch to Lun
 
 The [Codex configuration basics](https://developers.openai.com/codex/config-basic/) and [configuration reference](https://developers.openai.com/codex/config-reference/) document the `model` default but do not document a `gpt-reserve` opt-out setting.
 
+### Deleted files in patch previews
+
+Codex TUI patch previews show deleted files with the bold uppercase notice `FILE DELETED — THIS FILE DOES NOT EXIST ANYMORE.` instead of rendering the removed file contents. The notice wraps at narrow terminal widths; the file path and change counts remain visible.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)

@@ -1,11 +1,11 @@
 //! Renders unified diffs with line numbers, gutter signs, and optional syntax
 //! highlighting.
 //!
-//! Each `FileChange` variant (Add / Delete / Update) is rendered as a block of
-//! diff lines, each prefixed by a right-aligned line number, a gutter sign
-//! (`+` / `-` / ` `), and the content text.  When a recognized file extension
-//! is present, the content text is syntax-highlighted using
-//! [`crate::render::highlight`].
+//! Added and updated `FileChange` variants render as diff lines prefixed by a
+//! right-aligned line number, a gutter sign (`+` / `-` / ` `), and content text.
+//! Deleted files render a single, bold status line instead of their removed
+//! contents. Recognized file extensions enable syntax highlighting for diff
+//! content through [`crate::render::highlight`].
 //!
 //! **Theme-aware styling:** diff backgrounds adapt to the terminal's
 //! background lightness via [`DiffTheme`].  Dark terminals get muted tints
@@ -577,35 +577,19 @@ fn render_change_with_preview(
                 }
             }
         }
-        FileChange::Delete { content } => {
-            let syntax_lines = lang.and_then(|l| highlight_code_to_styled_spans(content, l));
-            let line_number_width = line_number_width(content.lines().count());
-            for (i, raw) in content.lines().enumerate() {
-                if preview_lines.is_some_and(|limit| out.len() >= limit) {
-                    break;
-                }
-                let syn = syntax_lines.as_ref().and_then(|sl| sl.get(i));
-                if let Some(spans) = syn {
-                    out.extend(render_wrapped_diff_line(
-                        i + 1,
-                        DiffLineType::Delete,
-                        raw,
-                        width,
-                        line_number_width,
-                        Some(spans),
-                        style_context,
-                    ));
-                } else {
-                    out.extend(render_wrapped_diff_line(
-                        i + 1,
-                        DiffLineType::Delete,
-                        raw,
-                        width,
-                        line_number_width,
-                        /*syntax_spans*/ None,
-                        style_context,
-                    ));
-                }
+        FileChange::Delete { .. } => {
+            if preview_lines != Some(0) {
+                let notice_style = Style::default().fg(Color::Red).add_modifier(Modifier::BOLD);
+                out.extend(
+                    textwrap::wrap(
+                        "FILE DELETED — THIS FILE DOES NOT EXIST ANYMORE.",
+                        width.max(/*other*/ 1),
+                    )
+                    .into_iter()
+                    .map(|line| {
+                        RtLine::from(RtSpan::styled(line.to_string(), notice_style)).into()
+                    }),
+                );
             }
         }
         FileChange::Update { unified_diff, .. } => {
@@ -1747,13 +1731,21 @@ mod tests {
     fn ui_snapshot_apply_delete_block() {
         let mut changes: HashMap<PathBuf, FileChange> = HashMap::new();
         changes.insert(
-            PathBuf::from("tmp_delete_example.txt"),
+            PathBuf::from("ignore.md"),
             FileChange::Delete {
-                content: "first\nsecond\nthird\n".to_string(),
+                content: "old ignore rule\nsecond\nthird\n".to_string(),
             },
         );
 
         let lines = diff_summary_for_tests(&changes);
+        let rendered = lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("FILE DELETED — THIS FILE DOES NOT EXIST ANYMORE."));
+        assert!(!rendered.contains("old ignore rule"));
+
         snapshot_lines(
             "apply_delete_block",
             lines,
@@ -2438,37 +2430,6 @@ mod tests {
                 .iter()
                 .all(|span| !matches!(span.style.fg, Some(ratatui::style::Color::Rgb(..))))
         }));
-    }
-
-    #[test]
-    fn delete_diff_uses_path_extension_for_highlighting() {
-        crate::terminal_palette::with_test_default_colors(
-            crate::terminal_probe::DefaultColors {
-                fg: (220, 220, 220),
-                bg: (20, 20, 20),
-            },
-            || {
-                let mut changes: HashMap<PathBuf, FileChange> = HashMap::new();
-                changes.insert(
-                    PathBuf::from("highlight_delete.py"),
-                    FileChange::Delete {
-                        content: "def scale(x):\n    return x * 2\n".to_string(),
-                    },
-                );
-
-                let lines =
-                    create_diff_summary(&changes, &PathBuf::from("/"), /*wrap_cols*/ 80);
-                let has_rgb = lines.iter().any(|line| {
-                    line.spans
-                        .iter()
-                        .any(|s| matches!(s.style.fg, Some(ratatui::style::Color::Rgb(..))))
-                });
-                assert!(
-                    has_rgb,
-                    "delete diff for .py file should produce syntax-highlighted (RGB) spans"
-                );
-            },
-        );
     }
 
     #[test]
