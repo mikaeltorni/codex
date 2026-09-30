@@ -77,6 +77,8 @@ Run `codex` to open the interactive CLI. Use `/status` to see current usage limi
 
 When `auto_resume_on_usage_limit = true` is configured, the usage-limit waiting menu also shows **Redeem reset** when your account has resets available, including when Luna Reserve is unavailable. It opens the same reset picker as `/usage`: choose a specific reset, review its details, then confirm **Yes, use reset**. The confirmation defaults to **No, go back**; that option or Escape returns to the picker without using a reset.
 
+Personal and workspace waiting menus also let you check for resets when availability has not been reported yet. The existing picker loads the available resets before you choose and confirm one; a confirmed empty balance hides the waiting menu's reset action. If a quota wait starts while the Luna Reserve notice is open, the waiting menu replaces that notice and shows the countdown. Running on Reserve without an active quota wait does not show a resume countdown.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
