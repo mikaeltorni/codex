@@ -1,5 +1,6 @@
 use super::*;
 use codex_app_server_protocol::GetAccountRateLimitsResponse;
+use codex_app_server_protocol::RateLimitResetCreditsSummary;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -22,6 +23,89 @@ fn banner_response(
         rate_limits: snapshot(/*percent*/ 25.0),
         rate_limits_by_limit_id: None,
         rate_limit_reset_credits: None,
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Pro);
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+    assert!(!render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+
+    let mut response = banner_response(/*presentation*/ None, json!([]));
+    response.rate_limit_upsell = None;
+    response.rate_limit_reset_credits = Some(RateLimitResetCreditsSummary {
+        available_count: 2,
+        credits: None,
+    });
+    chat.update_backend_banner(&response);
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    let stable = rendered
+        .lines()
+        .map(|line| {
+            if line.contains("Resuming in ") {
+                "• Resuming in <remaining> • esc to interrupt"
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_resets_without_reserve", stable);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.update_backend_banner(&response);
+    chat.refresh_usage_limit_wait_for_time_tick();
+    let _ = render_bottom_popup(&chat, /*width*/ 90);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+    );
+
+    response
+        .rate_limit_reset_credits
+        .as_mut()
+        .unwrap()
+        .available_count = 0;
+    chat.update_backend_banner(&response);
+    assert!(!render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+    assert_eq!(chat.available_rate_limit_reset_credits, Some(0));
+}
+
+#[tokio::test]
+async fn usage_wait_does_not_duplicate_a_renderable_backend_reset_action() {
+    for label in ["Use an available reset", ""] {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        let mut response = banner_response(
+            /*presentation*/ None,
+            json!([{"action": "reset_usage", "label": label}]),
+        );
+        response.rate_limit_reset_credits = Some(RateLimitResetCreditsSummary {
+            available_count: 1,
+            credits: None,
+        });
+        chat.update_backend_banner(&response);
+        chat.bottom_pane.set_task_running(true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        let actions = chat.usage_limit_wait_backend_banner().actions;
+        let names = actions
+            .into_iter()
+            .map(|item| item.name)
+            .collect::<Vec<_>>();
+        let expected = if label.is_empty() {
+            "Redeem reset"
+        } else {
+            label
+        };
+        assert_eq!(names, vec![expected.to_string()]);
     }
 }
 
