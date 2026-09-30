@@ -34,7 +34,9 @@ async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
     chat.bottom_pane.set_task_running(true);
     chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
     assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
-    assert!(!render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+    assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
 
     let mut response = banner_response(/*presentation*/ None, json!([]));
     response.rate_limit_upsell = None;
@@ -449,6 +451,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
         "Your turn will resume automatically.",
         "Add credits",
         "Upgrade",
+        "Redeem reset",
         "Switch to Luna Reserve",
         "Keep waiting",
         "Resuming in ",
@@ -477,13 +480,13 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
         Ok(AppEvent::OpenUrlInBrowser { url })
             if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing"
     ));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::ApplyBackendBannerFallback { thread_id: event_thread_id })
             if event_thread_id == thread_id
     ));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::DismissUsageLimitWaitBanner {
@@ -596,6 +599,7 @@ async fn usage_wait_countdown_tick_preserves_selected_recovery_action() {
     ));
     let _ = render_bottom_popup(&chat, /*width*/ 90);
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     chat.refresh_usage_limit_wait_for_time_tick();
     // An unchanged account poll must also leave the selected action in place.
     chat.update_backend_banner(&response);
@@ -670,8 +674,16 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
             .collect::<Vec<_>>()
             .join("\n");
         insta::assert_snapshot!(snapshot, stable);
+        // Unknown availability uses the same explicit check as /usage on every plan.
+        assert!(rendered.contains("Redeem reset"), "{rendered}");
+        let reset_choice = if action.is_some() { '2' } else { '1' };
+        chat.handle_key_event(KeyEvent::new(
+            KeyCode::Char(reset_choice),
+            KeyModifiers::NONE,
+        ));
+        assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
         // Only select the passive action; a rendered recovery offer never sends a request.
-        let choice = if action.is_some() { '2' } else { '1' };
+        let choice = if action.is_some() { '3' } else { '2' };
         chat.handle_key_event(KeyEvent::new(KeyCode::Char(choice), KeyModifiers::NONE));
         assert!(matches!(
             events.try_recv(),
@@ -766,7 +778,7 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
     );
     assert!(after_request.contains("Resuming in "), "{after_request}");
 
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
@@ -1020,4 +1032,94 @@ async fn backend_banner_changed_remedy_keeps_fallback_until_applicable_replaceme
                 .contains("Request a limit increase from your owner")
         );
     }
+}
+
+#[tokio::test]
+async fn usage_wait_omits_resets_for_empty_balances_and_non_chatgpt_accounts() {
+    for (has_chatgpt_account, available_count) in [(true, Some(0)), (false, None), (false, Some(2))]
+    {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = has_chatgpt_account;
+        chat.available_rate_limit_reset_credits = available_count;
+        chat.plan_type = Some(PlanType::Team);
+        chat.bottom_pane.set_task_running(true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert!(!rendered.contains("Redeem reset"), "{rendered}");
+        assert!(rendered.contains("Keep waiting"), "{rendered}");
+        assert!(rendered.contains("Resuming in "), "{rendered}");
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_replaces_reserve_notice_but_preserves_reset_picker() {
+    for open_reset_picker in [false, true] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("gpt-reserve")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(PlanType::Pro);
+        let response = serde_json::from_value(json!({
+            "accountId": "account-preview", "rateLimits": {},
+            "rateLimitUpsell": {
+                "banner_type": "luna_reserve", "presentation": "dismissible",
+                "title": "You are now using Luna Reserve",
+                "description": "Use a reset to continue with the most advanced models.",
+                "ctas": [{"action": "reset_usage", "label": "Reset usage"}]
+            }
+        }))
+        .unwrap();
+        chat.update_backend_banner(&response);
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Continue with Luna Reserve"));
+        if open_reset_picker {
+            chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+            assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+            chat.show_rate_limit_reset_loading_popup();
+        }
+
+        chat.bottom_pane.set_task_running(true);
+        let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+        chat.update_usage_limit_wait(Some(retry_at_ms));
+        assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+        // A periodic reply must not reopen the Reserve picker over an active countdown.
+        chat.update_backend_banner(&response);
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+        assert!(
+            !rendered.contains("Continue with Luna Reserve"),
+            "{rendered}"
+        );
+        if open_reset_picker {
+            assert!(
+                rendered.contains("Checking your available resets..."),
+                "{rendered}"
+            );
+            chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        } else {
+            assert!(rendered.contains("Reset usage"), "{rendered}");
+            assert!(rendered.contains("Auto-continue is enabled"), "{rendered}");
+        }
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_removes_unknown_reset_offer_when_account_read_confirms_empty_balance() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Team);
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+
+    let mut response = banner_response(/*presentation*/ None, json!([]));
+    response.rate_limit_upsell = None;
+    response.rate_limit_reset_credits = Some(RateLimitResetCreditsSummary {
+        available_count: 0,
+        credits: None,
+    });
+    chat.update_backend_banner(&response);
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(!rendered.contains("Redeem reset"), "{rendered}");
+    assert!(rendered.contains("Request increase"), "{rendered}");
+    assert!(rendered.contains("Keep waiting"), "{rendered}");
+    assert!(rendered.contains("Resuming in "), "{rendered}");
 }

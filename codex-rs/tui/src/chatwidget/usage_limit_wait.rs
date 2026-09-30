@@ -3,6 +3,7 @@
 use super::ChatWidget;
 use crate::app_event::AppEvent;
 use crate::backend_banners::BackendBanner;
+use crate::backend_banners::LUNA_RESERVE_RECOVERY_VIEW_ID;
 use crate::backend_banners::rate_limit_reset_selection_item;
 use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
@@ -33,10 +34,7 @@ impl ChatWidget {
         {
             content.actions.push(fallback);
         }
-        if self.has_chatgpt_account
-            && self
-                .available_rate_limit_reset_credits
-                .is_some_and(|count| count > 0)
+        if self.rate_limit_reset_action_enabled()
             && !self.applicable_backend_banner().is_some_and(|banner| {
                 banner
                     .selection_items()
@@ -76,6 +74,16 @@ impl ChatWidget {
             // Discard the elapsed wait so the visible working clock starts with that retry.
             self.bottom_pane.reset_status_timer(Duration::ZERO);
             self.bottom_pane.set_status_timer_origin(None);
+        }
+        // A focused Reserve notice hides the inline wait menu and status countdown.
+        // Replace only that notice; reset pickers and confirmations retain their focus.
+        if !was_waiting
+            && retry_at_ms.is_some()
+            && self
+                .bottom_pane
+                .dismiss_view_by_id(LUNA_RESERVE_RECOVERY_VIEW_ID)
+        {
+            tracing::debug!("usage wait replaced the Reserve recovery picker");
         }
         if !was_waiting && retry_at_ms.is_some() && self.has_chatgpt_account {
             // Auto-resume keeps the core turn alive, so the ordinary rate-limit error path does

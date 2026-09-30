@@ -15,71 +15,84 @@ const TEST_OVERLAY_VIEW_ID: &str = "usage-test-overlay";
 
 #[tokio::test]
 async fn usage_wait_reset_reuses_picker_confirmation_and_selected_credit() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    set_chatgpt_auth(&mut chat);
-    chat.plan_type = Some(PlanType::Pro);
-    chat.available_rate_limit_reset_credits = Some(2);
-    chat.bottom_pane.set_task_running(true);
-    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
-    chat.update_usage_limit_wait(Some(retry_at_ms));
-    assert_matches!(rx.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
-    let _ = render_bottom_popup(&chat, /*width*/ 90);
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
-    assert_matches!(rx.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+    for (plan, available_count, reset_choice) in [
+        (PlanType::Pro, Some(2), '1'),
+        (PlanType::Team, Some(2), '2'),
+        (PlanType::Team, None, '2'),
+    ] {
+        let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+        set_chatgpt_auth(&mut chat);
+        chat.plan_type = Some(plan);
+        chat.available_rate_limit_reset_credits = available_count;
+        chat.bottom_pane.set_task_running(true);
+        let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+        chat.update_usage_limit_wait(Some(retry_at_ms));
+        assert_matches!(rx.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+        let _ = render_bottom_popup(&chat, /*width*/ 90);
+        chat.handle_key_event(KeyEvent::new(
+            KeyCode::Char(reset_choice),
+            KeyModifiers::NONE,
+        ));
+        assert_matches!(rx.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
 
-    let request_id = chat.show_rate_limit_reset_loading_popup();
-    assert!(chat.finish_rate_limit_reset_credits_refresh(
-        request_id,
-        Vec::new(),
-        Ok(detailed_reset_credits(
-            /*available_count*/ 2,
-            vec![
-                reset_credit_with_title("first-credit", /*expires_at*/ None, "First reset"),
-                reset_credit_with_title(
-                    "selected-credit",
-                    /*expires_at*/ None,
-                    "Second reset"
-                ),
-            ],
-        )),
-    ));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-    let picker = render_bottom_popup(&chat, /*width*/ 90);
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    show_rate_limit_reset_confirmation_from_event(&mut chat, &mut rx);
-    // The confirmation defaults to No, exactly like the regular /usage picker.
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert!(rx.try_recv().is_err());
-    assert_eq!(render_bottom_popup(&chat, /*width*/ 90), picker);
+        let request_id = chat.show_rate_limit_reset_loading_popup();
+        assert!(chat.finish_rate_limit_reset_credits_refresh(
+            request_id,
+            Vec::new(),
+            Ok(detailed_reset_credits(
+                /*available_count*/ 2,
+                vec![
+                    reset_credit_with_title(
+                        "first-credit",
+                        /*expires_at*/ None,
+                        "First reset"
+                    ),
+                    reset_credit_with_title(
+                        "selected-credit",
+                        /*expires_at*/ None,
+                        "Second reset"
+                    ),
+                ],
+            )),
+        ));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        let picker = render_bottom_popup(&chat, /*width*/ 90);
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        show_rate_limit_reset_confirmation_from_event(&mut chat, &mut rx);
+        // The confirmation defaults to No, exactly like the regular /usage picker.
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(rx.try_recv().is_err());
+        assert_eq!(render_bottom_popup(&chat, /*width*/ 90), picker);
 
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    show_rate_limit_reset_confirmation_from_event(&mut chat, &mut rx);
-    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-    assert!(rx.try_recv().is_err());
-    assert_eq!(render_bottom_popup(&chat, /*width*/ 90), picker);
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        show_rate_limit_reset_confirmation_from_event(&mut chat, &mut rx);
+        chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(rx.try_recv().is_err());
+        assert_eq!(render_bottom_popup(&chat, /*width*/ 90), picker);
 
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    show_rate_limit_reset_confirmation_from_event(&mut chat, &mut rx);
-    chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    let Ok(AppEvent::ConsumeRateLimitResetCredit {
-        idempotency_key,
-        credit_id,
-    }) = rx.try_recv()
-    else {
-        panic!("expected confirmed reset consumption");
-    };
-    assert_eq!(credit_id.as_deref(), Some("selected-credit"));
-    assert!(Uuid::parse_str(&idempotency_key).is_ok());
-    assert!(
-        chat.start_rate_limit_reset_consumption(&idempotency_key)
-            .is_some()
-    );
-    assert_eq!(
-        chat.start_rate_limit_reset_consumption(&idempotency_key),
-        None
-    );
-    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        show_rate_limit_reset_confirmation_from_event(&mut chat, &mut rx);
+        chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let Ok(AppEvent::ConsumeRateLimitResetCredit {
+            idempotency_key,
+            credit_id,
+        }) = rx.try_recv()
+        else {
+            panic!("expected confirmed reset consumption");
+        };
+        assert_eq!(credit_id.as_deref(), Some("selected-credit"));
+        assert!(Uuid::parse_str(&idempotency_key).is_ok());
+        assert!(
+            chat.start_rate_limit_reset_consumption(&idempotency_key)
+                .is_some()
+        );
+        assert_eq!(
+            chat.start_rate_limit_reset_consumption(&idempotency_key),
+            None
+        );
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    }
 }
 
 #[tokio::test]
