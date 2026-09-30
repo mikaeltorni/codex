@@ -61,6 +61,13 @@ async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     chat.update_backend_banner(&response);
+    response
+        .rate_limit_reset_credits
+        .as_mut()
+        .unwrap()
+        .available_count = 1;
+    chat.update_backend_banner(&response);
+    assert_eq!(chat.available_rate_limit_reset_credits, Some(1));
     chat.refresh_usage_limit_wait_for_time_tick();
     let _ = render_bottom_popup(&chat, /*width*/ 90);
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
