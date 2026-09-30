@@ -312,6 +312,24 @@ impl ChatWidget {
 
     pub(crate) fn update_backend_banner(&mut self, response: &GetAccountRateLimitsResponse) {
         self.observe_backend_banner_view();
+        // Reset eligibility comes from the account read, independently of Reserve/upsell CTAs.
+        // An omitted summary is not authoritative absence; keep the last known availability.
+        let reset_credits_changed =
+            response
+                .rate_limit_reset_credits
+                .as_ref()
+                .is_some_and(|credits| {
+                    let changed =
+                        self.available_rate_limit_reset_credits != Some(credits.available_count);
+                    self.available_rate_limit_reset_credits = Some(credits.available_count);
+                    if changed {
+                        tracing::debug!(
+                            available_count = credits.available_count,
+                            "usage reset availability updated"
+                        );
+                    }
+                    changed
+                });
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners
         // still block it; percentages, sparse notifications and reset timestamps cannot prove it.
@@ -363,7 +381,8 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        if banner_changed && self.usage_limit_wait_retry_at_ms.is_some() {
+        if (banner_changed || reset_credits_changed) && self.usage_limit_wait_retry_at_ms.is_some()
+        {
             self.refresh_usage_limit_wait_banner();
         } else {
             self.refresh_backend_banner_visibility();

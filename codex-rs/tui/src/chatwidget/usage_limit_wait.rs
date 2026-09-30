@@ -32,6 +32,24 @@ impl ChatWidget {
         {
             content.actions.push(fallback);
         }
+        if self.has_chatgpt_account
+            && self
+                .available_rate_limit_reset_credits
+                .is_some_and(|count| count > 0)
+            && !self.applicable_backend_banner().is_some_and(|banner| {
+                banner
+                    .selection_items()
+                    .any(|(action, _)| action == "reset_usage")
+            })
+        {
+            content.actions.push(SelectionItem {
+                name: "Redeem reset".to_string(),
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::OpenRateLimitResetCredits);
+                })],
+                ..Default::default()
+            });
+        }
         if let Some(switch) = self.backend_banner_fallback()
             && let Some(thread_id) = self.thread_id()
         {
