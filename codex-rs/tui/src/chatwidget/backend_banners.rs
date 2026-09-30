@@ -314,21 +314,22 @@ impl ChatWidget {
         self.observe_backend_banner_view();
         // Reset eligibility comes from the account read, independently of Reserve/upsell CTAs.
         // An omitted summary is not authoritative absence; keep the last known availability.
-        let reset_credits_changed =
+        let reset_availability_changed =
             response
                 .rate_limit_reset_credits
                 .as_ref()
                 .is_some_and(|credits| {
-                    let changed =
-                        self.available_rate_limit_reset_credits != Some(credits.available_count);
+                    let previous = self.available_rate_limit_reset_credits;
                     self.available_rate_limit_reset_credits = Some(credits.available_count);
-                    if changed {
+                    if previous != Some(credits.available_count) {
                         tracing::debug!(
                             available_count = credits.available_count,
                             "usage reset availability updated"
                         );
                     }
-                    changed
+                    // The menu has one reset entry regardless of the count. Rebuild only when
+                    // that entry appears/disappears, keeping selection stable for count updates.
+                    previous.is_some_and(|count| count > 0) != (credits.available_count > 0)
                 });
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners
@@ -381,7 +382,8 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        if (banner_changed || reset_credits_changed) && self.usage_limit_wait_retry_at_ms.is_some()
+        if (banner_changed || reset_availability_changed)
+            && self.usage_limit_wait_retry_at_ms.is_some()
         {
             self.refresh_usage_limit_wait_banner();
         } else {
