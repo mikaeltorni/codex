@@ -5,11 +5,35 @@ use super::turn_context::TurnContext;
 use chrono::DateTime;
 use chrono::Utc;
 use codex_protocol::error::CodexErr;
+use codex_protocol::error::UsageLimitReachedError;
+use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::UsageLimitWaitEvent;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
+
+/// Keep the sampled request and wait out the reset when auto-resume is enabled.
+pub(super) async fn continue_after_usage_limit(
+    sess: &Session,
+    turn_context: &TurnContext,
+    error: &UsageLimitReachedError,
+    original_input: &mut Option<Vec<ResponseItem>>,
+    prompt_input: &mut Vec<ResponseItem>,
+    cancellation_token: &CancellationToken,
+) -> Result<bool, CodexErr> {
+    let Some(resets_at) = error
+        .resets_at
+        .filter(|_| turn_context.config.auto_resume_on_usage_limit)
+    else {
+        return Ok(false);
+    };
+    if original_input.is_none() {
+        *original_input = Some(std::mem::take(prompt_input));
+    }
+    wait_for_usage_limit_reset(sess, turn_context, resets_at, cancellation_token).await?;
+    Ok(true)
+}
 
 /// Wait until the advertised reset plus a margin for delayed backend quota updates.
 /// Emit a matching end event before returning, including when the turn is interrupted.

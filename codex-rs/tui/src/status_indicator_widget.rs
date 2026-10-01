@@ -38,6 +38,9 @@ use crate::wrapping::word_wrap_lines;
 mod timer;
 pub(crate) use timer::StatusTimer;
 
+#[path = "status_indicator_resume.rs"]
+mod resume;
+
 #[path = "summary_shimmer.rs"]
 mod summary_shimmer;
 use summary_shimmer::summary_shimmer;
@@ -248,10 +251,7 @@ impl StatusIndicator<'_> {
             spans.push(indicator);
             spans.push(" ".into());
         }
-        let status_header = row
-            .resume_countdown
-            .as_ref()
-            .map(|countdown| format!("Resuming in {countdown}"));
+        let status_header = resume::resume_status_header(row.resume_countdown.as_deref());
         spans.extend(summary_shimmer(
             status_header.as_deref().unwrap_or(&row.header),
             now.saturating_duration_since(row.header_started_at),
@@ -260,23 +260,24 @@ impl StatusIndicator<'_> {
         if !spans.is_empty() {
             spans.push(" ".into());
         }
-        let interrupt_binding = row.interrupt_binding.filter(|_| row.show_interrupt_hint);
-        match (row.resume_countdown.is_some(), interrupt_binding) {
-            (true, Some(interrupt_binding)) => {
-                spans.push("• ".dim());
-                spans.extend(interrupt_binding.spans());
-                spans.push(" to interrupt".dim());
-            }
-            (true, None) => {}
-            (false, Some(interrupt_binding)) => {
-                spans.push(format!("({pretty_elapsed} • ").dim());
-                spans.extend(interrupt_binding.spans());
-                spans.push(" to interrupt)".dim());
-            }
-            (false, None) => spans.push(format!("({pretty_elapsed})").dim()),
+        if row.resume_countdown.is_some() {
+            resume::push_resume_interrupt(
+                &mut spans,
+                row.interrupt_binding
+                    .as_ref()
+                    .filter(|_| row.show_interrupt_hint),
+            );
+        } else if row.show_interrupt_hint
+            && let Some(interrupt_binding) = row.interrupt_binding
+        {
+            spans.push(format!("({pretty_elapsed} • ").dim());
+            spans.extend(interrupt_binding.spans());
+            spans.push(" to interrupt)".dim());
+        } else {
+            spans.push(format!("({pretty_elapsed})").dim());
         }
         if let Some(message) = &row.inline_message {
-            // Keep optional context after the status/interrupt text so that core
+            // Keep optional context after elapsed/interrupt text so that core
             // interrupt affordances stay in a fixed visual location.
             spans.push(" · ".dim());
             spans.push(message.clone().dim());

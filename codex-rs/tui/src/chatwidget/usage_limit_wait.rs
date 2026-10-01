@@ -4,10 +4,12 @@ use super::ChatWidget;
 use crate::app_event::AppEvent;
 use crate::backend_banners::BackendBanner;
 use crate::backend_banners::LUNA_RESERVE_RECOVERY_VIEW_ID;
+use crate::backend_banners::banner_for_usage_limit_wait;
 use crate::backend_banners::rate_limit_reset_selection_item;
 use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
 use crate::bottom_pane::SelectionItem;
+use codex_app_server_protocol::GetAccountRateLimitsResponse;
 use codex_protocol::account::PlanType;
 use std::time::Duration;
 use std::time::Instant;
@@ -22,7 +24,9 @@ impl ChatWidget {
     pub(super) fn usage_limit_wait_backend_banner(&mut self) -> ActionableBanner {
         let mut content = self
             .applicable_backend_banner()
-            .map(|banner| self.backend_banner_actionable_content(&banner.for_usage_limit_wait()))
+            .map(|banner| {
+                self.backend_banner_actionable_content(&banner_for_usage_limit_wait(banner))
+            })
             .unwrap_or_default();
         if self.has_chatgpt_account
             && let Some(plan_type) = self.plan_type
@@ -59,6 +63,38 @@ impl ChatWidget {
             });
         }
         content
+    }
+
+    /// Unknown availability can be checked through the existing reset picker. Only an
+    /// authoritative empty balance or a non-ChatGPT account disables that action.
+    pub(super) fn rate_limit_reset_action_enabled(&self) -> bool {
+        self.has_chatgpt_account
+            && self
+                .available_rate_limit_reset_credits
+                .is_none_or(|count| count > 0)
+    }
+
+    /// Record reset credits from an account read. An omitted summary is not authoritative
+    /// absence. Returns whether the single reset menu entry appeared or disappeared.
+    pub(super) fn record_rate_limit_reset_availability(
+        &mut self,
+        response: &GetAccountRateLimitsResponse,
+    ) -> bool {
+        let reset_action_was_enabled = self.rate_limit_reset_action_enabled();
+        response
+            .rate_limit_reset_credits
+            .as_ref()
+            .is_some_and(|credits| {
+                let previous = self.available_rate_limit_reset_credits;
+                self.available_rate_limit_reset_credits = Some(credits.available_count);
+                if previous != Some(credits.available_count) {
+                    tracing::debug!(
+                        available_count = credits.available_count,
+                        "usage reset availability updated"
+                    );
+                }
+                reset_action_was_enabled != self.rate_limit_reset_action_enabled()
+            })
     }
 
     pub(super) fn update_usage_limit_wait(&mut self, retry_at_ms: Option<i64>) {

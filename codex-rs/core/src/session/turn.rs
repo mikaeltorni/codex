@@ -39,7 +39,7 @@ use crate::session::daemon_recovery::RecordedTurnInput;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
-use crate::session::usage_limit_wait::wait_for_usage_limit_reset;
+use crate::session::usage_limit_wait::continue_after_usage_limit;
 use crate::skills::emit_explicit_skill_invocations;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::InFlightFuture;
@@ -1623,7 +1623,7 @@ async fn run_sampling_request(
         sess.services
             .executed_tool_calls
             .attach_to_prompt(&mut prompt_input, &mut executed_tool_calls_by_output);
-        let prompt = build_prompt(
+        let mut prompt = build_prompt(
             prompt_input,
             step_context.as_ref(),
             base_instructions.clone(),
@@ -1640,7 +1640,7 @@ async fn run_sampling_request(
                 &responses_metadata,
             )?;
         }
-        let sampling_result = try_run_sampling_request(
+        let err = match try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
             Arc::clone(&step_context),
@@ -1651,8 +1651,8 @@ async fn run_sampling_request(
             &prompt,
             cancellation_token.child_token(),
         )
-        .await;
-        let err = match sampling_result {
+        .await
+        {
             Ok(output) => {
                 return Ok((output, original_input.unwrap_or(prompt.input)));
             }
@@ -1666,23 +1666,19 @@ async fn run_sampling_request(
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
                     }
-                    let Some(resets_at) = e
-                        .resets_at
-                        .filter(|_| turn_context.config.auto_resume_on_usage_limit)
-                    else {
-                        return Err(err);
-                    };
-                    if original_input.is_none() {
-                        original_input = Some(prompt.input);
-                    }
-                    wait_for_usage_limit_reset(
+                    if continue_after_usage_limit(
                         &sess,
                         &turn_context,
-                        resets_at,
+                        e,
+                        &mut original_input,
+                        &mut prompt.input,
                         &cancellation_token,
                     )
-                    .await?;
-                    continue;
+                    .await?
+                    {
+                        continue;
+                    }
+                    return Err(err);
                 }
                 _ => err,
             },
