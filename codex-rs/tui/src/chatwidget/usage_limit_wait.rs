@@ -2,6 +2,10 @@
 
 use super::ChatWidget;
 use crate::app_event::AppEvent;
+use crate::backend_banners::BackendBanner;
+use crate::backend_banners::LUNA_RESERVE_RECOVERY_VIEW_ID;
+use crate::backend_banners::rate_limit_reset_selection_item;
+use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
 use crate::bottom_pane::SelectionItem;
 use codex_protocol::account::PlanType;
@@ -13,6 +17,50 @@ use std::time::UNIX_EPOCH;
 const USAGE_LIMIT_WAIT_VIEW_ID: &str = "usage-limit-auto-resume";
 
 impl ChatWidget {
+    /// Reuse account recovery choices during an auto-resume wait, even if the earlier account
+    /// notice was dismissed, and supply the plan's upgrade/request action if no notice arrived.
+    pub(super) fn usage_limit_wait_backend_banner(&mut self) -> ActionableBanner {
+        let mut content = self
+            .applicable_backend_banner()
+            .map(|banner| self.backend_banner_actionable_content(&banner.for_usage_limit_wait()))
+            .unwrap_or_default();
+        if self.has_chatgpt_account
+            && let Some(plan_type) = self.plan_type
+            && let Some(fallback) = BackendBanner::recovery_fallback_for_plan(plan_type)
+            && !content
+                .actions
+                .iter()
+                .any(|action| action.name == fallback.name)
+        {
+            content.actions.push(fallback);
+        }
+        if self.rate_limit_reset_action_enabled()
+            && !self.applicable_backend_banner().is_some_and(|banner| {
+                banner
+                    .selection_items()
+                    .any(|(action, _)| action == "reset_usage")
+            })
+        {
+            content
+                .actions
+                .push(rate_limit_reset_selection_item("Redeem reset".to_string()));
+        }
+        if let Some(switch) = self.backend_banner_fallback()
+            && let Some(thread_id) = self.thread_id()
+        {
+            let model = switch.model.model;
+            let model_name = self.model_catalog.display_name(&model).to_string();
+            content.actions.push(SelectionItem {
+                name: format!("Switch to {model_name}"),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::ApplyBackendBannerFallback { thread_id });
+                })],
+                ..Default::default()
+            });
+        }
+        content
+    }
+
     pub(super) fn update_usage_limit_wait(&mut self, retry_at_ms: Option<i64>) {
         let was_waiting = self.usage_limit_wait_retry_at_ms.is_some();
         if self.usage_limit_wait_retry_at_ms != retry_at_ms {
@@ -26,6 +74,16 @@ impl ChatWidget {
             // Discard the elapsed wait so the visible working clock starts with that retry.
             self.bottom_pane.reset_status_timer(Duration::ZERO);
             self.bottom_pane.set_status_timer_origin(None);
+        }
+        // A focused Reserve notice hides the inline wait menu and status countdown.
+        // Replace only that notice; reset pickers and confirmations retain their focus.
+        if !was_waiting
+            && retry_at_ms.is_some()
+            && self
+                .bottom_pane
+                .dismiss_view_by_id(LUNA_RESERVE_RECOVERY_VIEW_ID)
+        {
+            tracing::debug!("usage wait replaced the Reserve recovery picker");
         }
         if !was_waiting && retry_at_ms.is_some() && self.has_chatgpt_account {
             // Auto-resume keeps the core turn alive, so the ordinary rate-limit error path does

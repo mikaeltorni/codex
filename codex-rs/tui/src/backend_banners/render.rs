@@ -2,8 +2,6 @@
 
 use super::BackendBanner;
 use super::BannerPresentation;
-use super::actions::BannerAction;
-use crate::app_event::AppEvent;
 use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
 use crate::bottom_pane::SelectionItem;
@@ -12,6 +10,23 @@ use chrono::DateTime;
 use chrono::Local;
 
 impl BackendBanner {
+    /// Render valid CTAs together with their backend action names for semantic deduplication.
+    pub(crate) fn selection_items(&self) -> impl Iterator<Item = (&str, SelectionItem)> {
+        self.ctas.iter().filter_map(|cta| {
+            if cta.label.trim().is_empty()
+                || cta.label.len() > 256
+                || cta.label.chars().any(char::is_control)
+            {
+                return None;
+            }
+            let action = self.resolve_action(&cta.action)?;
+            Some((
+                cta.action.as_str(),
+                action.selection_item(cta.label.clone()),
+            ))
+        })
+    }
+
     pub(crate) fn actionable_banner(&self, clock_format: ClockFormat) -> ActionableBanner {
         let reset_time = self
             .reset_at
@@ -34,35 +49,8 @@ impl BackendBanner {
             }
         };
         let actions = self
-            .ctas
-            .iter()
-            .filter_map(|cta| {
-                if cta.label.trim().is_empty()
-                    || cta.label.len() > 256
-                    || cta.label.chars().any(char::is_control)
-                {
-                    return None;
-                }
-                let action = self.resolve_action(&cta.action)?;
-                Some(SelectionItem {
-                    name: cta.label.clone(),
-                    actions: vec![Box::new(move |tx| {
-                        tx.send(match &action {
-                            BannerAction::OpenUrl(url) => {
-                                AppEvent::OpenUrlInBrowser { url: url.clone() }
-                            }
-                            BannerAction::NotifyOwner(credit_type) => {
-                                AppEvent::SendAddCreditsNudgeEmail {
-                                    credit_type: *credit_type,
-                                }
-                            }
-                            BannerAction::ResetUsage => AppEvent::OpenRateLimitResetCredits,
-                        })
-                    })],
-                    dismiss_on_select: false,
-                    ..Default::default()
-                })
-            })
+            .selection_items()
+            .map(|(_, item)| item)
             .collect::<Vec<_>>();
         ActionableBanner {
             title: copy(&self.title),

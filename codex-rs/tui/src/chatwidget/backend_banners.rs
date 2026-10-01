@@ -9,7 +9,6 @@ use super::ChatWidget;
 use super::QueuedUserMessage;
 use super::luna_reserve_return::ReserveReturnModel;
 use crate::app_command::AppCommand;
-use crate::app_event::AppEvent;
 use crate::backend_banners::BackendBanner;
 use crate::backend_banners::BannerPresentation;
 use crate::backend_banners::LUNA_RESERVE_BANNER;
@@ -313,6 +312,26 @@ impl ChatWidget {
 
     pub(crate) fn update_backend_banner(&mut self, response: &GetAccountRateLimitsResponse) {
         self.observe_backend_banner_view();
+        // Reset eligibility comes from the account read, independently of Reserve/upsell CTAs.
+        // An omitted summary is not authoritative absence; keep the last known availability.
+        let reset_action_was_enabled = self.rate_limit_reset_action_enabled();
+        let reset_availability_changed =
+            response
+                .rate_limit_reset_credits
+                .as_ref()
+                .is_some_and(|credits| {
+                    let previous = self.available_rate_limit_reset_credits;
+                    self.available_rate_limit_reset_credits = Some(credits.available_count);
+                    if previous != Some(credits.available_count) {
+                        tracing::debug!(
+                            available_count = credits.available_count,
+                            "usage reset availability updated"
+                        );
+                    }
+                    // The menu has one reset entry regardless of the count. Rebuild only when
+                    // that entry appears/disappears, keeping selection stable for count updates.
+                    reset_action_was_enabled != self.rate_limit_reset_action_enabled()
+                });
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners
         // still block it; percentages, sparse notifications and reset timestamps cannot prove it.
@@ -364,7 +383,9 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        if banner_changed && self.usage_limit_wait_retry_at_ms.is_some() {
+        if (banner_changed || reset_availability_changed)
+            && self.usage_limit_wait_retry_at_ms.is_some()
+        {
             self.refresh_usage_limit_wait_banner();
         } else {
             self.refresh_backend_banner_visibility();
@@ -382,44 +403,7 @@ impl ChatWidget {
             })
     }
 
-    /// Reuse account recovery choices during an auto-resume wait, even if the earlier account
-    /// notice was dismissed, and supply the plan's upgrade/request action if no notice arrived.
-    pub(super) fn usage_limit_wait_backend_banner(&mut self) -> ActionableBanner {
-        let mut content = self
-            .applicable_backend_banner()
-            .map(|banner| self.backend_banner_actionable_content(&banner.for_usage_limit_wait()))
-            .unwrap_or_default();
-        if self.has_chatgpt_account
-            && let Some(plan_type) = self.plan_type
-            && let Some(fallback) = BackendBanner::recovery_fallback_for_plan(plan_type)
-        {
-            for action in fallback.actionable_banner(self.clock_format).actions {
-                if !content
-                    .actions
-                    .iter()
-                    .any(|existing| existing.name == action.name)
-                {
-                    content.actions.push(action);
-                }
-            }
-        }
-        if let Some(switch) = self.backend_banner_fallback()
-            && let Some(thread_id) = self.thread_id()
-        {
-            let model = switch.model.model;
-            let model_name = self.model_catalog.display_name(&model).to_string();
-            content.actions.push(SelectionItem {
-                name: format!("Switch to {model_name}"),
-                actions: vec![Box::new(move |tx| {
-                    tx.send(AppEvent::ApplyBackendBannerFallback { thread_id });
-                })],
-                ..Default::default()
-            });
-        }
-        content
-    }
-
-    fn applicable_backend_banner(&self) -> Option<&BackendBanner> {
+    pub(super) fn applicable_backend_banner(&self) -> Option<&BackendBanner> {
         let banner = self.backend_banner_state.banner.as_ref()?;
         if self.backend_banner_state.dismissed && self.usage_limit_wait_retry_at_ms.is_none() {
             return None;
@@ -448,7 +432,10 @@ impl ChatWidget {
         matches_selected_model.then_some(banner)
     }
 
-    fn backend_banner_actionable_content(&self, banner: &BackendBanner) -> ActionableBanner {
+    pub(super) fn backend_banner_actionable_content(
+        &self,
+        banner: &BackendBanner,
+    ) -> ActionableBanner {
         let mut content = banner.actionable_banner(self.clock_format);
         if banner.banner_type == LUNA_RESERVE_BANNER && self.current_model() != LUNA_RESERVE_MODEL {
             content.title = "Usage limit reached".to_string();

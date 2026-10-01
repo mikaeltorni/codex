@@ -9,6 +9,8 @@ use serde::Deserializer;
 mod actions;
 mod render;
 
+pub(crate) use actions::rate_limit_reset_selection_item;
+
 pub(crate) const LUNA_RESERVE_BANNER: &str = "luna_reserve";
 pub(crate) const LUNA_RESERVE_RECOVERY_VIEW_ID: &str = "luna-reserve-recovery";
 
@@ -51,45 +53,6 @@ pub(crate) struct BackendBannerCta {
 }
 
 impl BackendBanner {
-    /// Supply plan recovery choices when a usage wait has no visible account banner.
-    /// Rendering this banner uses the same CTA destinations as the backend response.
-    pub(crate) fn recovery_fallback_for_plan(plan_type: PlanType) -> Option<Self> {
-        let (action, label) = match plan_type {
-            PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::ProLite => {
-                ("open_pricing_dialog", "Upgrade")
-            }
-            PlanType::Team
-            | PlanType::SelfServeBusinessProLite
-            | PlanType::SelfServeBusinessUsageBased
-            | PlanType::Business
-            | PlanType::Ent26
-            | PlanType::EnterpriseCbpAutomation
-            | PlanType::EnterpriseCbpUsageBased
-            | PlanType::Enterprise
-            | PlanType::Edu
-            | PlanType::EduPlus
-            | PlanType::EduPro => ("request_increase", "Request increase"),
-            PlanType::Pro | PlanType::Unknown => return None,
-        };
-        Some(Self {
-            banner_type: "usage_limit_recovery_fallback".to_string(),
-            title: String::new(),
-            description: String::new(),
-            ctas: vec![BackendBannerCta {
-                action: action.to_string(),
-                label: label.to_string(),
-            }],
-            reset_at: None,
-            model_slug: None,
-            blocked_model_slug: None,
-            fallback_model_slugs: Vec::new(),
-            presentation: BannerPresentation::Inline,
-            request_url: None,
-            account_id: String::new(),
-            plan_type: Some(plan_type),
-        })
-    }
-
     /// Parse supported, bounded content before constructing rendered copy or CTA closures.
     pub(crate) fn parse(raw: &serde_json::Value) -> Option<Self> {
         serde_json::from_value::<Self>(raw.clone())
