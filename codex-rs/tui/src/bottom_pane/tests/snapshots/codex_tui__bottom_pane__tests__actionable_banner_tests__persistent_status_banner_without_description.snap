@@ -1,0 +1,13 @@
+---
+source: tui/src/bottom_pane/tests/actionable_banner_tests.rs
+expression: snapshot
+---
+
+  Usage limit reached (Auto-continue is enabled)
+
+• Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts                                  100% context left

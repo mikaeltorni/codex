@@ -1,4 +1,5 @@
 use super::BackendBanner;
+use super::BannerPresentation;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -30,6 +31,22 @@ fn parse_rejects_more_actions_than_the_inline_banner_can_display() {
 }
 
 #[test]
+fn parse_accepts_null_optional_banner_fields_from_account_usage() {
+    let raw = json!({
+        "banner_type": "workspace_member_credits_depleted",
+        "title": "You've reached your workspace credit limit",
+        "description": "Ask your workspace owner for more usage.",
+        "ctas": [{"action": "notify_owner", "label": "Request credits"}],
+        "presentation": null,
+        "fallback_model_slugs": null,
+        "reset_at": 1_790_719_706,
+    });
+    let banner = BackendBanner::parse(&raw).expect("nullable account banner should be usable");
+    assert_eq!(banner.presentation, BannerPresentation::Inline);
+    assert_eq!(banner.fallback_model_slugs, Vec::<String>::new());
+}
+
+#[test]
 fn parse_rejects_unsupported_or_unrenderable_content() {
     let valid = json!({
         "banner_type": "usage_limit", "title": "Usage limit reached",
@@ -37,7 +54,6 @@ fn parse_rejects_unsupported_or_unrenderable_content() {
     });
     for invalid_fields in [
         json!({"presentation":"future_mode"}),
-        json!({"presentation":null}),
         json!({"title":" "}),
         json!({"title":"x".repeat(1025)}),
         json!({"title":"line\n".repeat(4)}),

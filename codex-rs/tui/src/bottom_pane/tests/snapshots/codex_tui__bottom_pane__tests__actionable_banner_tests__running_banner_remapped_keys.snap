@@ -1,0 +1,17 @@
+---
+source: tui/src/bottom_pane/tests/actionable_banner_tests.rs
+expression: rendered
+---
+                                                                                
+  Usage limit reached                                                           
+                                                                                
+› 1. First                                                                      
+  2. Keep waiting                                                               
+                                                                                
+  Press a number to choose · ↑ to move up · f2 to move down · f3 to select      
+• Working (0s • esc to interrupt)                                               
+                                                                                
+                                                                                
+› Ask Codex to do anything                                                      
+                                                                                
+  ? for shortcuts                                            100% context left

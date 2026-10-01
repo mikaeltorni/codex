@@ -6315,6 +6315,20 @@ class TurnSteerResponse(BaseModel):
     turn_id: Annotated[str, Field(alias="turnId")]
 
 
+class UsageLimitWaitChangedNotification(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    retry_at_ms: Annotated[
+        int | None,
+        Field(
+            alias="retryAtMs",
+            description="Unix timestamp in milliseconds for the next retry, or `None` when the wait ended.",
+        ),
+    ] = None
+    thread_id: Annotated[str, Field(alias="threadId")]
+
+
 class TextUserInput(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -9398,6 +9412,24 @@ class WarningServerNotification(BaseModel):
     ] = None
     method: Annotated[Literal["warning"], Field(title="WarningNotificationMethod")]
     params: WarningNotification
+
+
+class ThreadUsageLimitWaitChangedServerNotification(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    emitted_at_ms: Annotated[
+        int | None,
+        Field(
+            alias="emittedAtMs",
+            description="Unix timestamp (in milliseconds) when app-server emitted this notification.",
+        ),
+    ] = None
+    method: Annotated[
+        Literal["thread/usageLimitWaitChanged"],
+        Field(title="Thread/usageLimitWaitChangedNotificationMethod"),
+    ]
+    params: UsageLimitWaitChangedNotification
 
 
 class ConfigWarningServerNotification(BaseModel):
@@ -12897,6 +12929,7 @@ class ServerNotification(
         | TurnModerationMetadataServerNotification
         | ModelSafetyBufferingUpdatedServerNotification
         | WarningServerNotification
+        | ThreadUsageLimitWaitChangedServerNotification
         | GuardianWarningServerNotification
         | DeprecationNoticeServerNotification
         | ConfigWarningServerNotification
@@ -12986,6 +13019,7 @@ class ServerNotification(
         | TurnModerationMetadataServerNotification
         | ModelSafetyBufferingUpdatedServerNotification
         | WarningServerNotification
+        | ThreadUsageLimitWaitChangedServerNotification
         | GuardianWarningServerNotification
         | DeprecationNoticeServerNotification
         | ConfigWarningServerNotification

@@ -92,6 +92,7 @@ impl ChatWidget {
                 }
             }
             ServerNotification::TurnCompleted(notification) => {
+                self.update_usage_limit_wait(None);
                 self.restore_realtime_transcripts_before_turn(&notification.turn.id);
                 self.handle_turn_completed_notification(notification, replay_kind);
             }
@@ -245,6 +246,9 @@ impl ChatWidget {
                     ]));
                     self.request_redraw();
                 }
+            }
+            ServerNotification::UsageLimitWaitChanged(notification) => {
+                self.update_usage_limit_wait(notification.retry_at_ms);
             }
             ServerNotification::GuardianWarning(notification) => {
                 if !notification

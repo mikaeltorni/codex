@@ -116,6 +116,7 @@ pub(crate) fn without_notification_media(notification: ServerNotification) -> Se
         | ServerNotification::TurnModerationMetadata(_)
         | ServerNotification::ModelSafetyBufferingUpdated(_)
         | ServerNotification::Warning(_)
+        | ServerNotification::UsageLimitWaitChanged(_)
         | ServerNotification::GuardianWarning(_)
         | ServerNotification::DeprecationNotice(_)
         | ServerNotification::ConfigWarning(_)

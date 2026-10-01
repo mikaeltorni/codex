@@ -13,6 +13,7 @@ use crate::backend_banners::BackendBanner;
 use crate::backend_banners::BannerPresentation;
 use crate::backend_banners::LUNA_RESERVE_BANNER;
 use crate::backend_banners::LUNA_RESERVE_RECOVERY_VIEW_ID;
+use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::popup_consts::accept_cancel_hint_line;
@@ -311,6 +312,26 @@ impl ChatWidget {
 
     pub(crate) fn update_backend_banner(&mut self, response: &GetAccountRateLimitsResponse) {
         self.observe_backend_banner_view();
+        // Reset eligibility comes from the account read, independently of Reserve/upsell CTAs.
+        // An omitted summary is not authoritative absence; keep the last known availability.
+        let reset_action_was_enabled = self.rate_limit_reset_action_enabled();
+        let reset_availability_changed =
+            response
+                .rate_limit_reset_credits
+                .as_ref()
+                .is_some_and(|credits| {
+                    let previous = self.available_rate_limit_reset_credits;
+                    self.available_rate_limit_reset_credits = Some(credits.available_count);
+                    if previous != Some(credits.available_count) {
+                        tracing::debug!(
+                            available_count = credits.available_count,
+                            "usage reset availability updated"
+                        );
+                    }
+                    // The menu has one reset entry regardless of the count. Rebuild only when
+                    // that entry appears/disappears, keeping selection stable for count updates.
+                    reset_action_was_enabled != self.rate_limit_reset_action_enabled()
+                });
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners
         // still block it; percentages, sparse notifications and reset timestamps cannot prove it.
@@ -351,6 +372,7 @@ impl ChatWidget {
                         == new.blocked_model_slug.as_ref().or(new.model_slug.as_ref())
                     && old.fallback_model_slugs == new.fallback_model_slugs
             });
+        let banner_changed = self.backend_banner_state.banner != banner;
         self.backend_banner_state.banner = banner;
         if !same_occurrence {
             self.backend_banner_state.shown = false;
@@ -361,7 +383,13 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        self.refresh_backend_banner_visibility();
+        if (banner_changed || reset_availability_changed)
+            && self.usage_limit_wait_retry_at_ms.is_some()
+        {
+            self.refresh_usage_limit_wait_banner();
+        } else {
+            self.refresh_backend_banner_visibility();
+        }
     }
 
     fn reserve_notice_already_shown(&self) -> bool {
@@ -375,7 +403,52 @@ impl ChatWidget {
             })
     }
 
+    pub(super) fn applicable_backend_banner(&self) -> Option<&BackendBanner> {
+        let banner = self.backend_banner_state.banner.as_ref()?;
+        if self.backend_banner_state.dismissed && self.usage_limit_wait_retry_at_ms.is_none() {
+            return None;
+        }
+        // Keep Reserve recovery actions available while switching to Reserve.
+        if banner.banner_type == LUNA_RESERVE_BANNER {
+            return Some(banner);
+        }
+        // Explicit fallback payloads describe the selected replacement, not a pending switch.
+        let matches_selected_model = match banner.blocked_model_slug.as_deref() {
+            Some(blocked) if !banner.fallback_model_slugs.is_empty() => {
+                blocked != self.current_model()
+                    && banner
+                        .fallback_model_slugs
+                        .iter()
+                        .any(|model| model == self.current_model())
+            }
+            Some(_) | None => {
+                banner
+                    .model_slug
+                    .as_deref()
+                    .is_none_or(|model| model == self.current_model())
+                    || self.backend_banner_notice_model.as_deref() == Some(self.current_model())
+            }
+        };
+        matches_selected_model.then_some(banner)
+    }
+
+    pub(super) fn backend_banner_actionable_content(
+        &self,
+        banner: &BackendBanner,
+    ) -> ActionableBanner {
+        let mut content = banner.actionable_banner(self.clock_format);
+        if banner.banner_type == LUNA_RESERVE_BANNER && self.current_model() != LUNA_RESERVE_MODEL {
+            content.title = "Usage limit reached".to_string();
+            content.description =
+                "Your included usage is exhausted. Choose an option below to continue.".to_string();
+        }
+        content
+    }
+
     fn observe_backend_banner_view(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
         let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
         self.backend_banner_state.shown |= shown;
         self.backend_banner_state.dismissed |= dismissed;
@@ -386,47 +459,15 @@ impl ChatWidget {
     }
 
     pub(super) fn refresh_backend_banner_visibility(&mut self) {
-        let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
-            // Keep recovery actions available while switching, including on older servers
-            // without settings/update. The copy below describes the accepted model only.
-            if banner.banner_type == LUNA_RESERVE_BANNER {
-                return !self.backend_banner_state.dismissed;
-            }
-            // Explicit fallback payloads describe the selected replacement, not a pending switch.
-            let matches_selected_model = match banner.blocked_model_slug.as_deref() {
-                Some(blocked) if !banner.fallback_model_slugs.is_empty() => {
-                    blocked != self.current_model()
-                        && banner
-                            .fallback_model_slugs
-                            .iter()
-                            .any(|model| model == self.current_model())
-                }
-                Some(_) | None => {
-                    banner
-                        .model_slug
-                        .as_deref()
-                        .is_none_or(|model| model == self.current_model())
-                        || self.backend_banner_notice_model.as_deref() == Some(self.current_model())
-                }
-            };
-            !self.backend_banner_state.dismissed && matches_selected_model
-        });
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
+        let banner = self.applicable_backend_banner();
         if banner == self.backend_banner_state.presented.as_ref() {
             return;
         }
         let is_reserve = banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
-        let content = banner.map(|banner| {
-            let mut content = banner.actionable_banner(self.clock_format);
-            if banner.banner_type == LUNA_RESERVE_BANNER
-                && self.current_model() != LUNA_RESERVE_MODEL
-            {
-                content.title = "Usage limit reached".to_string();
-                content.description =
-                    "Your included usage is exhausted. Choose an option below to continue."
-                        .to_string();
-            }
-            content
-        });
+        let content = banner.map(|banner| self.backend_banner_actionable_content(banner));
         self.backend_banner_state.presented = banner.cloned();
         if content.is_some() {
             self.bottom_pane
@@ -484,6 +525,23 @@ impl ChatWidget {
         {
             self.maybe_show_pending_rate_limit_prompt();
         }
+    }
+
+    /// Reapply a normal inline account banner after the usage-wait notice released the composer.
+    pub(super) fn restore_backend_banner_after_usage_wait(&mut self) {
+        self.observe_backend_banner_view();
+        let reserve_banner_has_modal =
+            self.backend_banner_state
+                .banner
+                .as_ref()
+                .is_some_and(|banner| {
+                    banner.banner_type == LUNA_RESERVE_BANNER && self.bottom_pane.has_active_modal()
+                });
+        if reserve_banner_has_modal {
+            return;
+        }
+        self.backend_banner_state.presented = None;
+        self.refresh_backend_banner_visibility();
     }
 
     pub(super) fn sync_backend_banner_view(&mut self) {

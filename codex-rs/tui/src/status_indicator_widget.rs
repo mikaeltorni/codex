@@ -60,6 +60,8 @@ pub(crate) struct StatusIndicatorWidget {
     details_max_lines: usize,
     /// Optional suffix rendered after the elapsed/interrupt segment.
     inline_message: Option<String>,
+    /// Replaces the normal elapsed status with a quota-reset countdown while a turn is paused.
+    resume_countdown: Option<String>,
     /// Hook activity may move below the status row when it cannot fit in full.
     hook_status_message: Option<String>,
     show_interrupt_hint: bool,
@@ -101,6 +103,7 @@ impl StatusIndicatorWidget {
             details: None,
             details_max_lines: STATUS_DETAILS_DEFAULT_MAX_LINES,
             inline_message: None,
+            resume_countdown: None,
             hook_status_message: None,
             show_interrupt_hint: true,
             interrupt_binding: Some(key_hint::plain(KeyCode::Esc).into()),
@@ -151,6 +154,10 @@ impl StatusIndicatorWidget {
         self.inline_message = message
             .map(|message| message.trim().to_string())
             .filter(|message| !message.is_empty());
+    }
+
+    pub(crate) fn set_resume_countdown(&mut self, countdown: Option<String>) {
+        self.resume_countdown = countdown;
     }
 
     pub(crate) fn update_hook_status_message(&mut self, message: Option<String>) {
@@ -241,25 +248,35 @@ impl StatusIndicator<'_> {
             spans.push(indicator);
             spans.push(" ".into());
         }
+        let status_header = row
+            .resume_countdown
+            .as_ref()
+            .map(|countdown| format!("Resuming in {countdown}"));
         spans.extend(summary_shimmer(
-            &row.header,
+            status_header.as_deref().unwrap_or(&row.header),
             now.saturating_duration_since(row.header_started_at),
             shimmer,
         ));
         if !spans.is_empty() {
             spans.push(" ".into());
         }
-        if row.show_interrupt_hint
-            && let Some(interrupt_binding) = row.interrupt_binding
-        {
-            spans.push(format!("({pretty_elapsed} • ").dim());
-            spans.extend(interrupt_binding.spans());
-            spans.push(" to interrupt)".dim());
-        } else {
-            spans.push(format!("({pretty_elapsed})").dim());
+        let interrupt_binding = row.interrupt_binding.filter(|_| row.show_interrupt_hint);
+        match (row.resume_countdown.is_some(), interrupt_binding) {
+            (true, Some(interrupt_binding)) => {
+                spans.push("• ".dim());
+                spans.extend(interrupt_binding.spans());
+                spans.push(" to interrupt".dim());
+            }
+            (true, None) => {}
+            (false, Some(interrupt_binding)) => {
+                spans.push(format!("({pretty_elapsed} • ").dim());
+                spans.extend(interrupt_binding.spans());
+                spans.push(" to interrupt)".dim());
+            }
+            (false, None) => spans.push(format!("({pretty_elapsed})").dim()),
         }
         if let Some(message) = &row.inline_message {
-            // Keep optional context after elapsed/interrupt text so that core
+            // Keep optional context after the status/interrupt text so that core
             // interrupt affordances stay in a fixed visual location.
             spans.push(" · ".dim());
             spans.push(message.clone().dim());
@@ -450,6 +467,35 @@ mod tests {
             .collect::<String>();
 
         assert!(line.starts_with("Working (0s • esc to interrupt)"));
+    }
+
+    #[test]
+    fn renders_resume_countdown_instead_of_working_elapsed_time() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+            Default::default(),
+        );
+        w.set_resume_countdown(Some("1h 12m 31s".to_string()));
+        let mut timer = StatusTimer::default();
+        timer.pause_at(timer.last_resume_at);
+
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).expect("terminal");
+        terminal
+            .draw(|f| w.with_timer(&timer).render(f.area(), f.buffer_mut()))
+            .expect("draw");
+        let line = terminal.backend().buffer().content()[..80]
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+
+        assert!(line.starts_with("Resuming in 1h 12m 31s • esc to interrupt"));
+        assert!(!line.contains("Working"));
+        assert!(!line.contains("0s"));
+        insta::assert_snapshot!(terminal.backend());
     }
 
     #[test]

@@ -39,6 +39,7 @@ use crate::session::daemon_recovery::RecordedTurnInput;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
+use crate::session::usage_limit_wait::wait_for_usage_limit_reset;
 use crate::skills::emit_explicit_skill_invocations;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::InFlightFuture;
@@ -1655,7 +1656,7 @@ async fn run_sampling_request(
             )
             .await?;
         }
-        let err = match try_run_sampling_request(
+        let sampling_result = try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
             Arc::clone(&step_context),
@@ -1666,8 +1667,8 @@ async fn run_sampling_request(
             &prompt,
             cancellation_token.child_token(),
         )
-        .await
-        {
+        .await;
+        let err = match sampling_result {
             Ok(output) => {
                 return Ok((output, original_input.unwrap_or(prompt.input)));
             }
@@ -1681,7 +1682,23 @@ async fn run_sampling_request(
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
                     }
-                    return Err(err);
+                    let Some(resets_at) = e
+                        .resets_at
+                        .filter(|_| turn_context.config.auto_resume_on_usage_limit)
+                    else {
+                        return Err(err);
+                    };
+                    if original_input.is_none() {
+                        original_input = Some(prompt.input);
+                    }
+                    wait_for_usage_limit_reset(
+                        &sess,
+                        &turn_context,
+                        resets_at,
+                        &cancellation_token,
+                    )
+                    .await?;
+                    continue;
                 }
                 _ => err,
             },
@@ -2085,6 +2102,8 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
         }
         EventMsg::Error(_)
         | EventMsg::Warning(_)
+        | EventMsg::UsageLimitWaitStarted(_)
+        | EventMsg::UsageLimitWaitEnded
         | EventMsg::AuthRecoveryStarted(_)
         | EventMsg::AuthRecoveryCompleted(_)
         | EventMsg::GuardianWarning(_)

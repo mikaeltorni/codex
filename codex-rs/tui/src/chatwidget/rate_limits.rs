@@ -254,6 +254,7 @@ impl ChatWidget {
         snapshot: Option<RateLimitSnapshot>,
         source: RateLimitSnapshotSource,
     ) {
+        let previous_plan = self.plan_type;
         let usage_notice_blocked = self.codex_rate_limit_reached_type.is_some()
             || self.codex_spend_control_reached == Some(true);
         if let Some(mut snapshot) = snapshot {
@@ -404,6 +405,9 @@ impl ChatWidget {
                 || self.codex_spend_control_reached == Some(true))
         {
             self.request_redraw();
+        }
+        if self.plan_type != previous_plan && self.usage_limit_wait_retry_at_ms.is_some() {
+            self.refresh_usage_limit_wait_banner();
         }
         self.refresh_status_line();
     }
