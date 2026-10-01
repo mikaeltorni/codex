@@ -1,4 +1,3 @@
-use crate::backend_banners::rate_limit_reset_selection_item;
 use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditOutcome;
 use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditResponse;
 use codex_app_server_protocol::RateLimitResetCreditsSummary;
@@ -30,24 +29,16 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    /// Unknown availability can be checked through the existing reset picker. Only an
-    /// authoritative empty balance or a non-ChatGPT account disables that action.
-    pub(super) fn rate_limit_reset_action_enabled(&self) -> bool {
-        self.has_chatgpt_account
-            && self
-                .available_rate_limit_reset_credits
-                .is_none_or(|count| count > 0)
-    }
-
     fn usage_menu_params(&self) -> SelectionViewParams {
         let reset_eligible = self.has_chatgpt_account;
-        let reset_description = match (reset_eligible, self.available_rate_limit_reset_credits) {
-            (true, Some(available_count)) if available_count > 0 => {
-                format!("{available_count} available")
-            }
-            (true, None) => "Check availability".to_string(),
-            (true, Some(_)) | (false, _) => "None available".to_string(),
-        };
+        let (reset_action_enabled, reset_description) =
+            match (reset_eligible, self.available_rate_limit_reset_credits) {
+                (true, Some(available_count)) if available_count > 0 => {
+                    (true, format!("{available_count} available"))
+                }
+                (true, None) => (true, "Check availability".to_string()),
+                (true, Some(_)) | (false, _) => (false, "None available".to_string()),
+            };
 
         SelectionViewParams {
             view_id: Some(USAGE_MENU_VIEW_ID),
@@ -65,10 +56,14 @@ impl ChatWidget {
                     ..Default::default()
                 },
                 SelectionItem {
+                    name: "Redeem reset".to_string(),
                     description: Some(reset_description),
-                    is_disabled: !self.rate_limit_reset_action_enabled(),
+                    is_disabled: !reset_action_enabled,
+                    actions: vec![Box::new(|tx| {
+                        tx.send(AppEvent::OpenRateLimitResetCredits);
+                    })],
                     dismiss_on_select: true,
-                    ..rate_limit_reset_selection_item("Redeem reset".to_string())
+                    ..Default::default()
                 },
             ],
             ..SelectionViewParams::picker()
@@ -313,8 +308,12 @@ impl ChatWidget {
             subtitle: Some(message.to_string()),
             items: vec![
                 SelectionItem {
+                    name: "Try again".to_string(),
+                    actions: vec![Box::new(|tx| {
+                        tx.send(AppEvent::OpenRateLimitResetCredits);
+                    })],
                     dismiss_on_select: true,
-                    ..rate_limit_reset_selection_item("Try again".to_string())
+                    ..Default::default()
                 },
                 SelectionItem {
                     name: "Close".to_string(),
