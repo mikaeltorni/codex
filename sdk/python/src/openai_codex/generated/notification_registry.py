@@ -85,6 +85,7 @@ from .v2_all import TurnDiffUpdatedNotification
 from .v2_all import TurnModerationMetadataNotification
 from .v2_all import TurnPlanUpdatedNotification
 from .v2_all import TurnStartedNotification
+from .v2_all import UsageLimitWaitChangedNotification
 from .v2_all import WarningNotification
 from .v2_all import WindowsSandboxSetupCompletedNotification
 from .v2_all import WindowsWorldWritableWarningNotification
@@ -168,6 +169,7 @@ KnownNotificationPayload: TypeAlias = (
     | TurnModerationMetadataNotification
     | TurnPlanUpdatedNotification
     | TurnStartedNotification
+    | UsageLimitWaitChangedNotification
     | WarningNotification
     | WindowsSandboxSetupCompletedNotification
     | WindowsWorldWritableWarningNotification
@@ -249,6 +251,7 @@ NOTIFICATION_MODELS: dict[str, type[KnownNotificationPayload]] = {
     "thread/status/changed": ThreadStatusChangedNotification,
     "thread/tokenUsage/updated": ThreadTokenUsageUpdatedNotification,
     "thread/unarchived": ThreadUnarchivedNotification,
+    "thread/usageLimitWaitChanged": UsageLimitWaitChangedNotification,
     "turn/completed": TurnCompletedNotification,
     "turn/diff/updated": TurnDiffUpdatedNotification,
     "turn/moderationMetadata": TurnModerationMetadataNotification,

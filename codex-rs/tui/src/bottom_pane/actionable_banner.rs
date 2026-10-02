@@ -35,6 +35,12 @@ pub(crate) struct ActionableBanner {
     pub(crate) initial_selected_idx: Option<usize>,
     pub(crate) dismissal: BannerDismissal,
     pub(crate) view_id: Option<&'static str>,
+    /// Keep an informational banner visible while a task is running.
+    pub(crate) visible_while_task_running: bool,
+    /// Allow banner actions to be selected while a task is running.
+    pub(crate) interactive_while_task_running: bool,
+    /// Leave one row before the status line when both are visible.
+    pub(crate) gap_below: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -47,6 +53,9 @@ pub(crate) enum BannerDismissal {
 pub(super) struct InlineBanner {
     content: InlineBannerContent,
     dismissal: BannerDismissal,
+    pub(super) visible_while_task_running: bool,
+    interactive_while_task_running: bool,
+    pub(super) gap_below: bool,
     shown: Cell<bool>,
     // Current visibility is separate from whether this banner has ever been shown.
     pub(super) visible: Cell<bool>,
@@ -167,6 +176,9 @@ impl BottomPane {
     pub(crate) fn set_inline_banner(&mut self, banner: Option<ActionableBanner>) {
         self.inline_banner = banner.map(|banner| {
             let dismissal = banner.dismissal;
+            let visible_while_task_running = banner.visible_while_task_running;
+            let interactive_while_task_running = banner.interactive_while_task_running;
+            let gap_below = banner.gap_below;
             let has_actions = !banner.actions.is_empty();
             let mut params: SelectionViewParams = banner.into();
             params.header_gap = 0;
@@ -182,7 +194,11 @@ impl BottomPane {
                 }
                 (BannerDismissal::Dismissible, false) => "esc to dismiss · type to continue",
             };
-            let hint: Line<'static> = hint.dim().into();
+            let hint: Line<'static> = if interactive_while_task_running && has_actions {
+                running::interactive_banner_hint(&self.keymap.list)
+            } else {
+                hint.dim().into()
+            };
             params.footer_hint = Some(hint.clone());
             InlineBanner {
                 content: if has_actions {
@@ -198,6 +214,9 @@ impl BottomPane {
                     }
                 },
                 dismissal,
+                visible_while_task_running,
+                interactive_while_task_running,
+                gap_below,
                 shown: Cell::new(false),
                 visible: Cell::new(false),
                 dismissed: false,
@@ -225,6 +244,13 @@ impl BottomPane {
     }
 
     pub(super) fn handle_inline_banner_key(&mut self, key: KeyEvent) -> bool {
+        if self
+            .inline_banner
+            .as_ref()
+            .is_some_and(|banner| banner.interactive_while_task_running)
+        {
+            return self.handle_interactive_inline_banner_key(key);
+        }
         // Draft input, completion menus, and paste bursts retain all of their normal keys.
         if !self.composer_is_empty()
             || (key.code == KeyCode::Esc && self.composer.shortcut_overlay_visible())
@@ -264,3 +290,6 @@ impl BottomPane {
         true
     }
 }
+
+#[path = "inline_banner_running.rs"]
+mod running;

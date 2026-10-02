@@ -39,6 +39,7 @@ use crate::session::daemon_recovery::RecordedTurnInput;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
+use crate::session::usage_limit_wait::continue_after_usage_limit;
 use crate::skills::emit_explicit_skill_invocations;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::InFlightFuture;
@@ -1681,6 +1682,18 @@ async fn run_sampling_request(
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
                     }
+                    if continue_after_usage_limit(
+                        &sess,
+                        &turn_context,
+                        e,
+                        &mut original_input,
+                        &mut prompt.input,
+                        &cancellation_token,
+                    )
+                    .await?
+                    {
+                        continue;
+                    }
                     return Err(err);
                 }
                 _ => err,
@@ -2085,6 +2098,8 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
         }
         EventMsg::Error(_)
         | EventMsg::Warning(_)
+        | EventMsg::UsageLimitWaitStarted(_)
+        | EventMsg::UsageLimitWaitEnded
         | EventMsg::AuthRecoveryStarted(_)
         | EventMsg::AuthRecoveryCompleted(_)
         | EventMsg::GuardianWarning(_)

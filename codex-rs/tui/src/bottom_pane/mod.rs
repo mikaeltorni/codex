@@ -1239,6 +1239,17 @@ impl BottomPane {
         false
     }
 
+    /// Set the status-row countdown shown while a turn waits for usage to reset.
+    pub(crate) fn set_status_resume_countdown(&mut self, countdown: Option<String>) {
+        if countdown.is_some() {
+            self.ensure_status_indicator();
+        }
+        if let Some(status) = self.status.as_mut() {
+            status.set_resume_countdown(countdown);
+            self.request_redraw();
+        }
+    }
+
     /// Show the transient "press again to quit" hint for `key`.
     ///
     /// `ChatWidget` owns the quit shortcut state machine (it decides when quit is
@@ -2170,8 +2181,9 @@ impl BottomPane {
         {
             return RenderableItem::Borrowed(warnings);
         }
-        if (self.is_task_running || !self.view_stack.is_empty())
-            && let Some(banner) = &self.inline_banner
+        if let Some(banner) = &self.inline_banner
+            && (!self.view_stack.is_empty()
+                || (self.is_task_running && !banner.visible_while_task_running))
         {
             banner.visible.set(false);
         }
@@ -2182,9 +2194,12 @@ impl BottomPane {
             if let Some(banner) = self
                 .inline_banner
                 .as_ref()
-                .filter(|_| !self.is_task_running)
+                .filter(|banner| !self.is_task_running || banner.visible_while_task_running)
             {
                 flex.push(/*flex*/ 0, RenderableItem::Borrowed(banner));
+                if banner.gap_below && self.status_widget().is_some() {
+                    flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
+                }
             }
             if let Some(status) = self.status_widget() {
                 flex.push(

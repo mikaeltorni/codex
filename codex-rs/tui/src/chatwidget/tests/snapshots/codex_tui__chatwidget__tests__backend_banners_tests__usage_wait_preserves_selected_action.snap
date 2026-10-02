@@ -1,0 +1,18 @@
+---
+source: tui/src/chatwidget/tests/backend_banners_tests.rs
+expression: stable
+---
+  Workspace usage limit reached (Auto-continue is enabled)
+  Ask your owner for credits or switch to another model.
+
+  1. Request increase
+  2. Redeem reset
+› 3. Keep waiting
+
+  Press a number to choose · ↑ to move up · ↓ to move down · enter to select
+
+
+
+› Ask Codex to do anything
+
+  test-model-a default · /tmp/project
