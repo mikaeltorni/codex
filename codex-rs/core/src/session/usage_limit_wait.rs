@@ -14,8 +14,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 #[derive(Default)]
-pub(super) struct UsageLimitWait {
-    pub(super) resume: Notify,
+pub(crate) struct UsageLimitWait {
+    pub(crate) resume: Notify,
 }
 
 /// Wait out the reset when auto-resume is enabled, retaining the caller's history.
