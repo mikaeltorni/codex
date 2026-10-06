@@ -49,8 +49,6 @@ brew install --cask codex
 
 Then simply run `codex` to get started.
 
-Run `codex -c auto_resume_on_usage_limit=true` to keep quota-limited turns waiting for their reset time. Use `/usage` to review limits and redeem an available reset, or `Esc` to interrupt the wait. A successful reset or new steering retries the same turn promptly. Selecting a fallback model for the waiting turn also requires `--enable step_model_switching`.
-
 <details>
 <summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 
