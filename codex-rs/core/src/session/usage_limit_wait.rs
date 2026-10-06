@@ -1,5 +1,6 @@
 //! Cancellable quota waits for an active sampling turn. The caller retains the request history.
 
+use super::input_queue::InputQueueActivity;
 use super::session::Session;
 use super::turn_context::TurnContext;
 use chrono::DateTime;
@@ -8,6 +9,7 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::error::UsageLimitReachedError;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::UsageLimitWaitEvent;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -57,6 +59,26 @@ pub(super) async fn wait_for_usage_limit_reset(
     let wait = turn_context
         .extension_data
         .get_or_init(UsageLimitWait::default);
+    let turn_state = sess
+        .active_turn
+        .lock()
+        .await
+        .as_ref()
+        .map(|active| Arc::clone(&active.turn_state));
+    let (mut activity, pending) = sess
+        .input_queue
+        .subscribe_activity(turn_state.as_deref())
+        .await;
+    let steering = async {
+        if pending == Some(InputQueueActivity::Steer) {
+            return;
+        }
+        while activity.changed().await.is_ok() {
+            if *activity.borrow_and_update() == InputQueueActivity::Steer {
+                return;
+            }
+        }
+    };
     sess.send_event(
         turn_context,
         EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms }),
@@ -77,6 +99,7 @@ pub(super) async fn wait_for_usage_limit_reset(
             Ok(())
         }
         _ = wait.resume.notified() => Ok(()),
+        _ = steering => Ok(()),
     };
     turn_context.extension_data.remove::<UsageLimitWait>();
     // End the countdown before retrying so the UI starts a fresh working timer.
