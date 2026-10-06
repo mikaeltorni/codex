@@ -42,6 +42,7 @@ pub struct WarningNotification {
 pub struct UsageLimitWaitChangedNotification {
     pub thread_id: String,
     /// Unix timestamp in milliseconds for the next retry, or `None` when the wait ended.
+    #[ts(type = "number | null")]
     pub retry_at_ms: Option<i64>,
 }
 

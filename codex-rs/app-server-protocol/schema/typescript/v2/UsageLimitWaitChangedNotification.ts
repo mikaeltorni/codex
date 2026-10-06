@@ -9,4 +9,4 @@ export type UsageLimitWaitChangedNotification = { threadId: string,
 /**
  * Unix timestamp in milliseconds for the next retry, or `None` when the wait ended.
  */
-retryAtMs: bigint | null, };
+retryAtMs: number | null, };
