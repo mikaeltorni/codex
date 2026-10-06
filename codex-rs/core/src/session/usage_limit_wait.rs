@@ -1,25 +1,30 @@
 //! Cancellable quota waits for an active sampling turn. The caller retains the request history.
 
+use super::input_queue::InputQueueActivity;
 use super::session::Session;
 use super::turn_context::TurnContext;
 use chrono::DateTime;
 use chrono::Utc;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::UsageLimitReachedError;
-use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::UsageLimitWaitEvent;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-/// Keep the sampled request and wait out the reset when auto-resume is enabled.
+#[derive(Default)]
+pub(crate) struct UsageLimitWait {
+    pub(crate) resume: Notify,
+}
+
+/// Wait out the reset when auto-resume is enabled, retaining the caller's history.
 pub(super) async fn continue_after_usage_limit(
     sess: &Session,
     turn_context: &TurnContext,
     error: &UsageLimitReachedError,
-    original_input: &mut Option<Vec<ResponseItem>>,
-    prompt_input: &mut Vec<ResponseItem>,
     cancellation_token: &CancellationToken,
 ) -> Result<bool, CodexErr> {
     let Some(resets_at) = error
@@ -28,9 +33,6 @@ pub(super) async fn continue_after_usage_limit(
     else {
         return Ok(false);
     };
-    if original_input.is_none() {
-        *original_input = Some(std::mem::take(prompt_input));
-    }
     wait_for_usage_limit_reset(sess, turn_context, resets_at, cancellation_token).await?;
     Ok(true)
 }
@@ -54,6 +56,29 @@ pub(super) async fn wait_for_usage_limit_reset(
     let retry_at_ms = now
         .timestamp_millis()
         .saturating_add(i64::try_from(wait_duration.as_millis()).unwrap_or(i64::MAX));
+    let wait = turn_context
+        .extension_data
+        .get_or_init(UsageLimitWait::default);
+    let turn_state = sess
+        .active_turn
+        .lock()
+        .await
+        .as_ref()
+        .map(|active| Arc::clone(&active.turn_state));
+    let (mut activity, pending) = sess
+        .input_queue
+        .subscribe_activity(turn_state.as_deref())
+        .await;
+    let steering = async {
+        if pending == Some(InputQueueActivity::Steer) {
+            return;
+        }
+        while activity.changed().await.is_ok() {
+            if *activity.borrow_and_update() == InputQueueActivity::Steer {
+                return;
+            }
+        }
+    };
     sess.send_event(
         turn_context,
         EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms }),
@@ -69,13 +94,34 @@ pub(super) async fn wait_for_usage_limit_reset(
             info!("Usage limit wait cancelled");
             Err(CodexErr::TurnAborted)
         }
-        _ = tokio::time::sleep(wait_duration) => {
+        _ = wait_for_deadline(retry_at_ms, Utc::now) => {
             info!("Usage limit reset wait complete; retrying sampling request");
             Ok(())
         }
+        _ = wait.resume.notified() => Ok(()),
+        _ = steering => Ok(()),
     };
+    turn_context.extension_data.remove::<UsageLimitWait>();
     // End the countdown before retrying so the UI starts a fresh working timer.
     sess.send_event(turn_context, EventMsg::UsageLimitWaitEnded)
         .await;
     result
 }
+
+async fn wait_for_deadline(retry_at_ms: i64, now: impl Fn() -> DateTime<Utc>) {
+    loop {
+        let remaining = retry_at_ms.saturating_sub(now().timestamp_millis());
+        if remaining <= 0 {
+            return;
+        }
+        // Recheck UTC after short sleeps so suspend does not extend the reset deadline.
+        tokio::time::sleep(
+            Duration::from_millis(remaining as u64).min(Duration::from_secs(/*secs*/ 1)),
+        )
+        .await;
+    }
+}
+
+#[cfg(test)]
+#[path = "usage_limit_wait_tests.rs"]
+mod tests;

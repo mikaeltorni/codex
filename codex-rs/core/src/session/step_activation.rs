@@ -366,6 +366,14 @@ impl Session {
             task.turn_context
                 .next_step_settings
                 .store(Arc::new(settings));
+            if updates_model_settings
+                && let Some(wait) = task
+                    .turn_context
+                    .extension_data
+                    .get::<super::usage_limit_wait::UsageLimitWait>()
+            {
+                wait.resume.notify_one();
+            }
         }
         if environments.is_some() {
             self.services.turn_environments.update_selections(proposed);

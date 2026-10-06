@@ -11,6 +11,7 @@ use codex_protocol::protocol::UsageLimitWaitEvent;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_response_sequence;
 use core_test_support::responses::sse;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
@@ -21,6 +22,96 @@ use wiremock::MockServer;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn steering_resumes_repeated_quota_waits_with_the_accepted_input() -> anyhow::Result<()> {
+    let server = MockServer::start().await;
+    let quota = ResponseTemplate::new(/*s*/ 429).set_body_json(json!({
+        "error": {
+            "type": "usage_limit_reached",
+            "resets_at": Utc::now().timestamp() + 3600,
+            "plan_type": "pro"
+        }
+    }));
+    let responses = mount_response_sequence(
+        &server,
+        vec![
+            quota.clone(),
+            quota,
+            ResponseTemplate::new(/*s*/ 200).set_body_raw(
+                sse(vec![
+                    ev_response_created("recovered"),
+                    ev_completed("recovered"),
+                ]),
+                "text/event-stream",
+            ),
+        ],
+    )
+    .await;
+    let test = test_codex()
+        .with_config(|config| {
+            config.auto_resume_on_usage_limit = true;
+            config.model_provider.request_max_retries = Some(0);
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    let started = test
+        .codex
+        .start_or_steer_turn(codex_core::TurnInputRequest::user_input(vec![
+            codex_protocol::user_input::UserInput::Text {
+                text: "do the task".into(),
+                text_elements: Vec::new(),
+            },
+        ]))
+        .await?;
+    let codex_protocol::turn_input::TurnInputSubmission::Started { turn_id } = started else {
+        panic!("expected a new turn");
+    };
+    for text in ["first correction", "second correction"] {
+        wait_for_event(&test.codex, |event| {
+            matches!(event, EventMsg::UsageLimitWaitStarted(_))
+        })
+        .await;
+        let steered = test
+            .codex
+            .start_or_steer_turn(codex_core::TurnInputRequest::user_input(vec![
+                codex_protocol::user_input::UserInput::Text {
+                    text: text.into(),
+                    text_elements: Vec::new(),
+                },
+            ]))
+            .await?;
+        assert_eq!(
+            steered,
+            codex_protocol::turn_input::TurnInputSubmission::Steered {
+                turn_id: turn_id.clone()
+            }
+        );
+        tokio::time::timeout(
+            std::time::Duration::from_secs(/*secs*/ 10),
+            wait_for_event(&test.codex, |event| {
+                matches!(event, EventMsg::UsageLimitWaitEnded)
+            }),
+        )
+        .await?;
+    }
+    wait_for_event(&test.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    let requests = responses.requests();
+    assert_eq!(requests.len(), 3);
+    let mut expected = requests[0].message_input_texts("user");
+    assert_eq!(expected.last().map(String::as_str), Some("do the task"));
+    for (request, text) in requests[1..]
+        .iter()
+        .zip(["first correction", "second correction"])
+    {
+        expected.push(text.to_string());
+        assert_eq!(request.message_input_texts("user"), expected);
+    }
+    Ok(())
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn retries_multiple_usage_limits_with_completed_tool_result() -> anyhow::Result<()> {

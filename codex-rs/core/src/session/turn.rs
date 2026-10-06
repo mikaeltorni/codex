@@ -532,7 +532,14 @@ pub(crate) async fn run_turn(
         }
         .await;
         match sampling_request_result {
-            Ok((sampling_request_output, sampling_request_input)) => {
+            Ok(SamplingRequestOutcome::Retry) => {
+                can_drain_pending_input = true;
+                continue;
+            }
+            Ok(SamplingRequestOutcome::Complete(
+                sampling_request_output,
+                sampling_request_input,
+            )) => {
                 guardian_budget_compacted = false;
                 let SamplingRequestResult {
                     needs_follow_up: model_needs_follow_up,
@@ -1590,7 +1597,7 @@ async fn run_sampling_request(
     client_session: &mut ModelClientSession,
     input: Vec<ResponseItem>,
     cancellation_token: CancellationToken,
-) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
+) -> CodexResult<SamplingRequestOutcome> {
     let turn_context = Arc::clone(&step_context.turn);
     let base_instructions = sess.get_prompt_base_instructions().await;
 
@@ -1623,7 +1630,7 @@ async fn run_sampling_request(
         sess.services
             .executed_tool_calls
             .attach_to_prompt(&mut prompt_input, &mut executed_tool_calls_by_output);
-        let mut prompt = build_prompt(
+        let prompt = build_prompt(
             prompt_input,
             step_context.as_ref(),
             base_instructions.clone(),
@@ -1654,7 +1661,10 @@ async fn run_sampling_request(
         .await
         {
             Ok(output) => {
-                return Ok((output, original_input.unwrap_or(prompt.input)));
+                return Ok(SamplingRequestOutcome::Complete(
+                    output,
+                    original_input.unwrap_or(prompt.input),
+                ));
             }
             Err(err) => match err.details() {
                 CodexErrorDetails::ContextWindowExceeded => {
@@ -1666,17 +1676,10 @@ async fn run_sampling_request(
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
                     }
-                    if continue_after_usage_limit(
-                        &sess,
-                        &turn_context,
-                        e,
-                        &mut original_input,
-                        &mut prompt.input,
-                        &cancellation_token,
-                    )
-                    .await?
+                    if continue_after_usage_limit(&sess, &turn_context, e, &cancellation_token)
+                        .await?
                     {
-                        continue;
+                        return Ok(SamplingRequestOutcome::Retry);
                     }
                     return Err(err);
                 }
@@ -1840,6 +1843,12 @@ pub(crate) async fn built_tools(
 struct SamplingRequestResult {
     needs_follow_up: bool,
     last_agent_message: Option<String>,
+}
+
+enum SamplingRequestOutcome {
+    Complete(SamplingRequestResult, Vec<ResponseItem>),
+    /// Resume through the normal step boundary so accepted settings are captured again.
+    Retry,
 }
 
 /// Ephemeral per-response state for streaming a single proposed plan.
