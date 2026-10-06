@@ -248,9 +248,7 @@ async fn successful_reset_redemption_resumes_an_active_quota_wait() -> Result<()
             serde_json::from_value(response.result)?;
         assert_eq!(
             redeemed,
-            ConsumeAccountRateLimitResetCreditResponse {
-                outcome: expected.clone()
-            }
+            ConsumeAccountRateLimitResetCreditResponse { outcome: expected }
         );
         if expected != ConsumeAccountRateLimitResetCreditOutcome::Reset {
             let read: ThreadReadResponse = app

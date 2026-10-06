@@ -94,7 +94,7 @@ pub(super) async fn wait_for_usage_limit_reset(
             info!("Usage limit wait cancelled");
             Err(CodexErr::TurnAborted)
         }
-        _ = tokio::time::sleep(wait_duration) => {
+        _ = wait_for_deadline(retry_at_ms, Utc::now) => {
             info!("Usage limit reset wait complete; retrying sampling request");
             Ok(())
         }
@@ -107,3 +107,21 @@ pub(super) async fn wait_for_usage_limit_reset(
         .await;
     result
 }
+
+async fn wait_for_deadline(retry_at_ms: i64, now: impl Fn() -> DateTime<Utc>) {
+    loop {
+        let remaining = retry_at_ms.saturating_sub(now().timestamp_millis());
+        if remaining <= 0 {
+            return;
+        }
+        // Recheck UTC after short sleeps so suspend does not extend the reset deadline.
+        tokio::time::sleep(
+            Duration::from_millis(remaining as u64).min(Duration::from_secs(/*secs*/ 1)),
+        )
+        .await;
+    }
+}
+
+#[cfg(test)]
+#[path = "usage_limit_wait_tests.rs"]
+mod tests;
