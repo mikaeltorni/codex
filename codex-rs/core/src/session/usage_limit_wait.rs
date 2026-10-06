@@ -6,20 +6,23 @@ use chrono::DateTime;
 use chrono::Utc;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::UsageLimitReachedError;
-use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::UsageLimitWaitEvent;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-/// Keep the sampled request and wait out the reset when auto-resume is enabled.
+#[derive(Default)]
+pub(super) struct UsageLimitWait {
+    pub(super) resume: Notify,
+}
+
+/// Wait out the reset when auto-resume is enabled, retaining the caller's history.
 pub(super) async fn continue_after_usage_limit(
     sess: &Session,
     turn_context: &TurnContext,
     error: &UsageLimitReachedError,
-    original_input: &mut Option<Vec<ResponseItem>>,
-    prompt_input: &mut Vec<ResponseItem>,
     cancellation_token: &CancellationToken,
 ) -> Result<bool, CodexErr> {
     let Some(resets_at) = error
@@ -28,9 +31,6 @@ pub(super) async fn continue_after_usage_limit(
     else {
         return Ok(false);
     };
-    if original_input.is_none() {
-        *original_input = Some(std::mem::take(prompt_input));
-    }
     wait_for_usage_limit_reset(sess, turn_context, resets_at, cancellation_token).await?;
     Ok(true)
 }
@@ -54,6 +54,9 @@ pub(super) async fn wait_for_usage_limit_reset(
     let retry_at_ms = now
         .timestamp_millis()
         .saturating_add(i64::try_from(wait_duration.as_millis()).unwrap_or(i64::MAX));
+    let wait = turn_context
+        .extension_data
+        .get_or_init(UsageLimitWait::default);
     sess.send_event(
         turn_context,
         EventMsg::UsageLimitWaitStarted(UsageLimitWaitEvent { retry_at_ms }),
@@ -73,7 +76,9 @@ pub(super) async fn wait_for_usage_limit_reset(
             info!("Usage limit reset wait complete; retrying sampling request");
             Ok(())
         }
+        _ = wait.resume.notified() => Ok(()),
     };
+    turn_context.extension_data.remove::<UsageLimitWait>();
     // End the countdown before retrying so the UI starts a fresh working timer.
     sess.send_event(turn_context, EventMsg::UsageLimitWaitEnded)
         .await;

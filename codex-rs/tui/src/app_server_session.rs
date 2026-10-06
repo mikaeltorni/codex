@@ -10,6 +10,7 @@ mod models;
 mod realtime;
 mod rollout_history;
 mod thread_list;
+mod turn_settings;
 
 #[cfg(test)]
 #[path = "app_server_session/collaboration_catalog_tests.rs"]
