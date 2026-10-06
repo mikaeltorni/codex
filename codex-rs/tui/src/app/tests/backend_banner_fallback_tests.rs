@@ -30,6 +30,56 @@ fn configure_fallback_model(app: &mut App) {
     app.chat_widget.set_model("gpt-5.5");
 }
 
+#[tokio::test]
+async fn quota_wait_fallback_targets_the_waiting_turn_before_changing_selection() -> Result<()> {
+    let (mut app, _events, _ops) = make_test_app_with_channels().await;
+    let (mut server, requests, proxy) = start_fallback_thread(&mut app).await?;
+    let thread_id = app.active_thread_id.expect("active fallback thread");
+    app.thread_event_channels.insert(
+        thread_id,
+        ThreadEventChannel::new_with_session(
+            THREAD_EVENT_CHANNEL_CAPACITY,
+            test_thread_session(thread_id, app.config.cwd.to_path_buf()),
+            vec![test_turn(
+                "waiting-turn",
+                TurnStatus::InProgress,
+                Vec::new(),
+            )],
+        ),
+    );
+    app.chat_widget.update_backend_banner(&fallback_response());
+    app.chat_widget.handle_server_notification(
+        ServerNotification::UsageLimitWaitChanged(
+            codex_app_server_protocol::UsageLimitWaitChangedNotification {
+                thread_id: thread_id.to_string(),
+                retry_at_ms: Some(chrono::Utc::now().timestamp_millis() + 3_600_000),
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+    requests.lock().unwrap().clear();
+    app.apply_backend_banner_fallback(&mut server).await;
+    // The synthetic turn is absent on the server, so selection must remain unchanged.
+    assert_eq!(app.chat_widget.current_model(), "gpt-5.5");
+    let recorded = requests.lock().unwrap().clone();
+    let update = recorded
+        .iter()
+        .find(|request| request.method == "turn/settings/update")
+        .expect("fallback must update the active turn");
+    let params: codex_app_server_protocol::TurnSettingsUpdateParams =
+        serde_json::from_value(update.params.clone().unwrap())?;
+    assert_eq!(params.thread_id, thread_id.to_string());
+    assert_eq!(params.turn_id, "waiting-turn");
+    assert_eq!(params.model.as_deref(), Some("gpt-5.6-terra"));
+    assert!(
+        !recorded
+            .iter()
+            .any(|request| request.method == "thread/settings/update")
+    );
+    proxy.abort();
+    Ok(())
+}
+
 pub(super) async fn start_fallback_thread(
     app: &mut App,
 ) -> Result<session_lifecycle_requests::RecordingAppServer> {

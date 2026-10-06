@@ -633,7 +633,7 @@ pub(crate) struct ChatWidget {
     clock_format: crate::clock_format::ClockFormat,
     usage_notice_state: usage_notice::UsageNoticeState,
     /// Reset deadline and redraw deadline for the active core usage-limit wait.
-    usage_limit_wait_retry_at_ms: Option<i64>,
+    pub(crate) usage_limit_wait_retry_at_ms: Option<i64>,
     usage_limit_wait_banner_dismissed: bool,
     pub(crate) usage_limit_wait_next_tick: Option<Instant>,
     backend_banner_state: backend_banners::BackendBannerState,

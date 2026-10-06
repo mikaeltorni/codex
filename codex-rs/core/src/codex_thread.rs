@@ -6,6 +6,7 @@ use crate::elicitation::ElicitationRegistration;
 use crate::session::SessionIo;
 use crate::session::SessionSettingsUpdate;
 use crate::session::Submission;
+use crate::session::UsageLimitWait;
 use crate::session::new_submission_id;
 use crate::session::session::Session;
 use crate::session::step_settings::StepSettingsUpdate;
@@ -212,6 +213,16 @@ pub struct BackgroundTerminalInfo {
 /// Conduit for the bidirectional stream of messages that compose a thread
 /// (formerly called a conversation) in Codex.
 impl CodexThread {
+    /// Retry a running quota wait after the backend confirms a usage-limit reset.
+    pub async fn notify_usage_limit_reset(&self) {
+        let active = self.session.active_turn.lock().await;
+        if let Some(task) = active.as_ref().and_then(|active| active.task.as_ref())
+            && let Some(wait) = task.turn_context.extension_data.get::<UsageLimitWait>()
+        {
+            wait.resume.notify_one();
+        }
+    }
+
     pub(crate) fn new(
         session: Arc<Session>,
         io: SessionIo,
