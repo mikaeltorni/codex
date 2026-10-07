@@ -1,14 +1,14 @@
 # Installed CX deployment checks
 
 Run `python3 scripts/install/verify_cx_deployment.py -v` from this checkout
-with Python 3.11 or newer, after publishing the test-branch CLI and Code Mode
+with Python 3.11 or newer, after publishing the local main CLI and Code Mode
 host through the setup repository's atomic publication helper. These checks
 are read-only and start no agent turns, network requests or terminal windows.
 Each unittest case rereads the registry and verifies its bytes are unchanged.
 
 | Contract | Independently expected result | Executable case |
 | --- | --- | --- |
-| Installed revision marker against newTest1601 | Committed ancestor with identical runtime sources | test_committed_runtime |
+| Installed revision marker against main | Committed ancestor with identical runtime sources | test_committed_runtime |
 | Published CLI and host against final build artifacts | Executable files with matching SHA-256 for both | test_committed_runtime |
 | Every registered account's direct CLI | Workspace version and accepted quota-resume/step-switch configuration | test_registered_account_launchers |
 | CX aliases and codexN wrappers | Existing ACC routing; codexN reaches same CLI version with explicit account home | test_registered_account_launchers |

@@ -99,10 +99,17 @@ usage-limit wait keeps its countdown visible while account banners update.
 Dismissing an unrelated notice leaves a hidden account banner available when
 switching back to its model. Reserve recovery and reset actions remain available.
 
-### Checking the CX test deployment
+### Checking the local deployment
 
 On this machine, registered CX accounts share the installed Codex CLI and Code
-Mode host. The `newTest1601` test deployment publishes both binaries together.
+Mode host. The main, Qwen, OpenRouter, and NVIDIA harnesses use the local `main`
+branch, which includes Codex 0.161.0 and the fork recovery changes. The setup
+repository publishes both binaries together to each harness:
+
+```shell
+CODEX_FORK_REF=main bash "$HOME/projects/linux_codex_claude_code_setup/scripts/sync_codex_fork.sh"
+```
+
 Existing processes keep their loaded binary; start a fresh Codex process to test
 the deployed changes.
 
@@ -113,7 +120,7 @@ newer:
 python3 scripts/install/verify_cx_deployment.py -v
 ```
 
-The checks verify the committed revision against `newTest1601`, unchanged runtime
+The checks verify the committed revision against `main`, unchanged runtime
 sources, both installed binary hashes, and the CLI/configuration for every
 registered account. They preserve the selected account and start no agent turns.
 The [coverage inventory](scripts/install/cx_deployment_coverage.md) describes
@@ -135,7 +142,7 @@ workspace suite requires separate approval under this repository's `AGENTS.md`.
 
 ### Automatic GPT Reserve switching
 
-The local 0.160.1 fork accepts this setting in `~/.codex/config.toml` (or the
+The local fork accepts this setting in `~/.codex/config.toml` (or the
 selected `CODEX_HOME` / profile configuration):
 
 ```toml
@@ -155,7 +162,7 @@ Restart the CLI and resume the same conversation after changing the setting.
 The saved regression runner is documented in
 [codex-rs/tui/reserve_switch_coverage.md](codex-rs/tui/reserve_switch_coverage.md).
 
-The change is isolated on `feat/codex_reserve-auto-switch-config`, based on
+The opt-out was developed on `feat/codex_reserve-auto-switch-config`, based on
 `rust-v0.160.1`, for upstream review. That release automatically selects Reserve
 in its [account-banner handler](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/tui/src/chatwidget/backend_banners.rs)
 and has no corresponding opt-out in its
