@@ -95,6 +95,40 @@ usage-limit wait keeps its countdown visible while account banners update.
 Dismissing an unrelated notice leaves a hidden account banner available when
 switching back to its model. Reserve recovery and reset actions remain available.
 
+### Checking the CX test deployment
+
+On this machine, registered CX accounts share the installed Codex CLI and Code
+Mode host. The `newTest1601` test deployment publishes both binaries together.
+Existing processes keep their loaded binary; start a fresh Codex process to test
+the deployed changes.
+
+From the repository root, run the installed-runtime checks with Python 3.11 or
+newer:
+
+```shell
+python3 scripts/install/verify_cx_deployment.py -v
+```
+
+The checks verify the committed revision against `newTest1601`, unchanged runtime
+sources, both installed binary hashes, and the CLI/configuration for every
+registered account. They preserve the selected account and start no agent turns.
+The [coverage inventory](scripts/install/cx_deployment_coverage.md) describes
+the saved cases. Documentation-only commits do not require rebuilding the runtime.
+
+For the TUI regression suite, run from `codex-rs` using the installed CLI:
+
+```shell
+umask 077
+env -u NO_COLOR TERM=xterm-256color \
+  CARGO_BIN_EXE_codex="$HOME/.local/share/linux_codex_claude_code_setup/npm/bin/codex" \
+  CARGO_TARGET_DIR="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target" \
+  just test -p codex-tui
+```
+
+Private fixture directories satisfy existing IPC trust checks. The normal
+terminal color environment preserves escape-sequence assertions. The complete
+workspace suite requires separate approval under this repository's `AGENTS.md`.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
