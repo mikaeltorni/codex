@@ -20,5 +20,5 @@ Each unittest case rereads the registry and verifies its bytes are unchanged.
 The existing Codex CLI owns argument parsing. These installed-runtime checks
 cover representative missing-value and unknown-option paths; they do not add
 new parsing rules. CLI help/version probes require no authentication and do
-not modify conversations. Account credentials are never read. Existing TUI,
+not modify conversations. The checks do not inspect or print account credentials. Existing TUI,
 protocol, and recovery suites cover quota and banner behavior.
