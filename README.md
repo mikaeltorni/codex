@@ -53,8 +53,6 @@ brew install --cask codex
 
 Then simply run `codex` to get started.
 
-Run `codex -c auto_resume_on_usage_limit=true` to keep quota-limited turns waiting for their reset time. Use `/usage` to review limits and redeem an available reset, or `Esc` to interrupt the wait. A successful reset or new steering retries the same turn promptly. Selecting a fallback model for the waiting turn also requires `--enable step_model_switching`.
-
 <details>
 <summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 
@@ -76,6 +74,64 @@ Each archive contains a single entry with the platform baked into the name (e.g.
 Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
+
+## Fork usage-limit recovery
+
+The public entrypoint is `codex [OPTIONS] [PROMPT]` for an interactive coding
+session, or `codex <COMMAND> [OPTIONS]` for a CLI operation. Public commands are
+`agents`, `exec` (`e`), `review`, `login`, `logout`, `mcp`, `plugin`, `app-server`,
+`remote-control`, `completion`, `update`, `doctor`, `sandbox`, `debug`, `apply`
+(`a`), `resume`, `queue`, `archive`, `delete`, `migrate-rollouts`, `unarchive`,
+`fork`, `cloud` (`cloud-tasks`), `exec-server`, `features`, and `help`. The `app`
+command is available on macOS and Windows. Internal commands include
+`tcp-tunnel`, `execpolicy`, `responses-api-proxy`, and `stdio-to-uds`.
+Use `codex <COMMAND> --help` for each command's operands and subcommands.
+
+This fork can wait for usage-limit reset and automatically resume the turn:
+
+```shell
+codex -c auto_resume_on_usage_limit=true
+```
+
+In the interactive session, `/model` changes the model, `/status` shows the
+session and usage limits, and `/usage` opens usage and reset actions. An active
+usage-limit wait keeps its countdown visible while account banners update.
+Dismissing an unrelated notice leaves a hidden account banner available when
+switching back to its model. Reserve recovery and reset actions remain available.
+
+### Checking the CX test deployment
+
+On this machine, registered CX accounts share the installed Codex CLI and Code
+Mode host. The `newTest1601` test deployment publishes both binaries together.
+Existing processes keep their loaded binary; start a fresh Codex process to test
+the deployed changes.
+
+From the repository root, run the installed-runtime checks with Python 3.11 or
+newer:
+
+```shell
+python3 scripts/install/verify_cx_deployment.py -v
+```
+
+The checks verify the committed revision against `newTest1601`, unchanged runtime
+sources, both installed binary hashes, and the CLI/configuration for every
+registered account. They preserve the selected account and start no agent turns.
+The [coverage inventory](scripts/install/cx_deployment_coverage.md) describes
+the saved cases. Documentation-only commits do not require rebuilding the runtime.
+
+For the TUI regression suite, run from `codex-rs` using the installed CLI:
+
+```shell
+umask 077
+env -u NO_COLOR TERM=xterm-256color \
+  CARGO_BIN_EXE_codex="$HOME/.local/share/linux_codex_claude_code_setup/npm/bin/codex" \
+  CARGO_TARGET_DIR="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target" \
+  just test -p codex-tui
+```
+
+Private fixture directories satisfy existing IPC trust checks. The normal
+terminal color environment preserves escape-sequence assertions. The complete
+workspace suite requires separate approval under this repository's `AGENTS.md`.
 
 ## Docs
 

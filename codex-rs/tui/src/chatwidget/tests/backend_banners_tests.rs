@@ -298,6 +298,35 @@ async fn backend_banner_turn_on_another_model_preserves_hidden_occurrence() {
 }
 
 #[tokio::test]
+async fn unrelated_inline_banner_dismissal_preserves_hidden_account_banner() {
+    for _ in 0..2 {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-b")).await;
+        let response = banner_response(Some("dismissible"), json!([]));
+        chat.update_backend_banner(&response);
+        assert!(
+            !render_bottom_popup(&chat, /*width*/ 70).contains("Selected model usage exhausted")
+        );
+
+        chat.bottom_pane
+            .set_inline_banner(Some(crate::bottom_pane::ActionableBanner {
+                title: "Unrelated notice".into(),
+                ..Default::default()
+            }));
+        assert!(render_bottom_popup(&chat, /*width*/ 70).contains("Unrelated notice"));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(!render_bottom_popup(&chat, /*width*/ 70).contains("Unrelated notice"));
+        chat.update_backend_banner(&response);
+        chat.set_model("test-model-a");
+        let restored = render_bottom_popup(&chat, /*width*/ 70);
+        assert!(
+            restored.contains("Selected model usage exhausted"),
+            "{restored}"
+        );
+        insta::assert_snapshot!("hidden_account_banner_after_unrelated_dismissal", restored);
+    }
+}
+
+#[tokio::test]
 async fn backend_banner_restores_only_programmatically_displaced_switch_prompt() {
     for user_dismissed in [false, true] {
         let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("gpt-5")).await;
