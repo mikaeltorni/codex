@@ -1,6 +1,9 @@
 # Account-banner merge regression coverage
 
-Run from the repository root with `just test -p codex-tui`.
+Run from the repository root with `umask 077`, then
+`env -u NO_COLOR TERM=xterm-256color just test -p codex-tui`.
+Private fixture directories satisfy the existing IPC trust checks; normal color
+settings preserve terminal escape-sequence assertions.
 The task uses `CARGO_TARGET_DIR=/home/mk/projects/.worktrees/codex/codex_chore-merge160-harnesses/codex-rs/target`
 to reuse the existing test cache. Each case creates a fresh ChatWidget fixture.
 
