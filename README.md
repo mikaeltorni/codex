@@ -93,6 +93,28 @@ Restart the CLI and resume the same conversation after changing the setting.
 The saved regression runner is documented in
 [codex-rs/tui/reserve_switch_coverage.md](codex-rs/tui/reserve_switch_coverage.md).
 
+The change is isolated on `feat/codex_reserve-auto-switch-config`, based on
+`rust-v0.160.1`, for upstream review. That release automatically selects Reserve
+in its [account-banner handler](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/tui/src/chatwidget/backend_banners.rs)
+and has no corresponding opt-out in its
+[configuration schema](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/core/config.schema.json).
+The new flag defaults to `true` to preserve that behavior unless explicitly
+configured. Local installer policy is maintained separately by native setup
+and Agent Command Center.
+
+Validation on the release-based branch executed 45 focused feature, Reserve
+and backend-banner checks, all passing. The saved coverage inventory names the
+runner and cases; the full workspace suite was not run. `just fmt`,
+`just write-config-schema` and `just bazel-lock-update` also completed. The lockfile
+change only aligns existing workspace package versions with the release's
+`0.160.1` manifest; it introduces no dependency upgrade.
+
+Review the focused change with:
+
+```shell
+git diff rust-v0.160.1...feat/codex_reserve-auto-switch-config
+```
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
