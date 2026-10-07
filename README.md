@@ -133,6 +133,50 @@ Private fixture directories satisfy existing IPC trust checks. The normal
 terminal color environment preserves escape-sequence assertions. The complete
 workspace suite requires separate approval under this repository's `AGENTS.md`.
 
+### Automatic GPT Reserve switching
+
+The local 0.160.1 fork accepts this setting in `~/.codex/config.toml` (or the
+selected `CODEX_HOME` / profile configuration):
+
+```toml
+[features]
+luna_reserve_auto_switch = false
+```
+
+It prevents account usage banners from automatically selecting `gpt-reserve`,
+waiting for that selection, or restricting manual model selection. Other model
+fallbacks and recovery from an existing Reserve session remain available. The
+upstream-compatible default is `true`; the native setup installer explicitly
+sets it to `false` in every discovered Codex home and profile.
+
+The public CLI also accepts `codex features disable luna_reserve_auto_switch`,
+`codex features enable luna_reserve_auto_switch`, and `codex features list`.
+Restart the CLI and resume the same conversation after changing the setting.
+The saved regression runner is documented in
+[codex-rs/tui/reserve_switch_coverage.md](codex-rs/tui/reserve_switch_coverage.md).
+
+The change is isolated on `feat/codex_reserve-auto-switch-config`, based on
+`rust-v0.160.1`, for upstream review. That release automatically selects Reserve
+in its [account-banner handler](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/tui/src/chatwidget/backend_banners.rs)
+and has no corresponding opt-out in its
+[configuration schema](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/core/config.schema.json).
+The new flag defaults to `true` to preserve that behavior unless explicitly
+configured. Local installer policy is maintained separately by native setup
+and Agent Command Center.
+
+Validation on the release-based branch executed 45 focused feature, Reserve
+and backend-banner checks, all passing. The saved coverage inventory names the
+runner and cases; the full workspace suite was not run. `just fmt`,
+`just write-config-schema` and `just bazel-lock-update` also completed. The lockfile
+change only aligns existing workspace package versions with the release's
+`0.160.1` manifest; it introduces no dependency upgrade.
+
+Review the focused change with:
+
+```shell
+git diff rust-v0.160.1...feat/codex_reserve-auto-switch-config
+```
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)

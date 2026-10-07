@@ -977,6 +977,9 @@
             "login_shell_package_path": {
               "type": "boolean"
             },
+            "luna_reserve_auto_switch": {
+              "type": "boolean"
+            },
             "mcp_2026_07_28": {
               "type": "boolean"
             },
@@ -7075,6 +7078,9 @@
           "type": "boolean"
         },
         "login_shell_package_path": {
+          "type": "boolean"
+        },
+        "luna_reserve_auto_switch": {
           "type": "boolean"
         },
         "mcp_2026_07_28": {
