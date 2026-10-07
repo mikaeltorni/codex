@@ -381,9 +381,11 @@ impl ChatWidget {
         if self.usage_limit_wait_retry_at_ms.is_some() {
             return;
         }
-        let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
-        self.backend_banner_state.shown |= shown;
-        self.backend_banner_state.dismissed |= dismissed;
+        if self.backend_banner_state.presented.is_some() {
+            let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
+            self.backend_banner_state.shown |= shown;
+            self.backend_banner_state.dismissed |= dismissed;
+        }
         self.backend_banner_state.dismissed |= self
             .backend_banner_state
             .picker_dismissed
