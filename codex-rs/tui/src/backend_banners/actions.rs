@@ -69,7 +69,7 @@ impl BackendBanner {
                 BannerAction::NotifyOwner(AddCreditsNudgeCreditType::UsageLimit),
                 "Request increase",
             ),
-            PlanType::Pro | PlanType::Unknown => return None,
+            PlanType::Pro | PlanType::ProMax | PlanType::Unknown => return None,
         };
         Some(action.selection_item(label.to_string()))
     }
