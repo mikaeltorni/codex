@@ -2,12 +2,9 @@
 source: tui/src/app/tests.rs
 expression: rendered
 ---
-╭────────────────────────────────────────╮
-│ >_ OpenAI Codex (v0.157.0)             │
-│                                        │
-│ model:     gpt-test   /model to change │
-│ directory: <thread cwd>                │
-╰────────────────────────────────────────╯
+
+  >_ OpenAI Codex (v0.160.1)
+     <thread cwd>
 
 
 › Next thread prompt

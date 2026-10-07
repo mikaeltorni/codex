@@ -665,6 +665,12 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
             "usage_wait_personal_pro",
         ),
         (
+            PlanType::ProMax,
+            "Personal usage limit reached",
+            None,
+            "usage_wait_personal_pro",
+        ),
+        (
             PlanType::Team,
             "Workspace usage limit reached",
             Some("Request increase"),
