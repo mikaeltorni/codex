@@ -71,6 +71,30 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+## Fork usage-limit recovery
+
+The public entrypoint is `codex [OPTIONS] [PROMPT]` for an interactive coding
+session, or `codex <COMMAND> [OPTIONS]` for a CLI operation. Public commands are
+`agents`, `exec` (`e`), `review`, `login`, `logout`, `mcp`, `plugin`, `app-server`,
+`remote-control`, `completion`, `update`, `doctor`, `sandbox`, `debug`, `apply`
+(`a`), `resume`, `queue`, `archive`, `delete`, `migrate-rollouts`, `unarchive`,
+`fork`, `cloud` (`cloud-tasks`), `exec-server`, `features`, and `help`. The `app`
+command is available on macOS and Windows. Internal commands include
+`tcp-tunnel`, `execpolicy`, `responses-api-proxy`, and `stdio-to-uds`.
+Use `codex <COMMAND> --help` for each command's operands and subcommands.
+
+This fork can wait for usage-limit reset and automatically resume the turn:
+
+```shell
+codex -c auto_resume_on_usage_limit=true
+```
+
+In the interactive session, `/model` changes the model, `/status` shows the
+session and usage limits, and `/usage` opens usage and reset actions. An active
+usage-limit wait keeps its countdown visible while account banners update.
+Dismissing an unrelated notice leaves a hidden account banner available when
+switching back to its model. Reserve recovery and reset actions remain available.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
