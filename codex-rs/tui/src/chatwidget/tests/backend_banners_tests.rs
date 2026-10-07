@@ -298,6 +298,35 @@ async fn backend_banner_turn_on_another_model_preserves_hidden_occurrence() {
 }
 
 #[tokio::test]
+async fn unrelated_inline_banner_dismissal_preserves_hidden_account_banner() {
+    for _ in 0..2 {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-b")).await;
+        let response = banner_response(Some("dismissible"), json!([]));
+        chat.update_backend_banner(&response);
+        assert!(
+            !render_bottom_popup(&chat, /*width*/ 70).contains("Selected model usage exhausted")
+        );
+
+        chat.bottom_pane
+            .set_inline_banner(Some(crate::bottom_pane::ActionableBanner {
+                title: "Unrelated notice".into(),
+                ..Default::default()
+            }));
+        assert!(render_bottom_popup(&chat, /*width*/ 70).contains("Unrelated notice"));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(!render_bottom_popup(&chat, /*width*/ 70).contains("Unrelated notice"));
+        chat.update_backend_banner(&response);
+        chat.set_model("test-model-a");
+        let restored = render_bottom_popup(&chat, /*width*/ 70);
+        assert!(
+            restored.contains("Selected model usage exhausted"),
+            "{restored}"
+        );
+        insta::assert_snapshot!("hidden_account_banner_after_unrelated_dismissal", restored);
+    }
+}
+
+#[tokio::test]
 async fn backend_banner_restores_only_programmatically_displaced_switch_prompt() {
     for user_dismissed in [false, true] {
         let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("gpt-5")).await;
@@ -398,6 +427,9 @@ async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner(
 }
 
 #[tokio::test]
+/// Verify recovery actions remain usable during an active quota wait.
+/// Parameters: none.
+/// Returns: None.
 async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
@@ -472,7 +504,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::OpenUrlInBrowser { url })
-            if url == "https://chatgpt.com/codex/settings/usage?credits_modal=true"
+            if url == "https://chatgpt.com/settings/usage?credits_modal=true"
     ));
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
     assert!(matches!(
@@ -631,6 +663,12 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
         ),
         (
             PlanType::Pro,
+            "Personal usage limit reached",
+            None,
+            "usage_wait_personal_pro",
+        ),
+        (
+            PlanType::ProMax,
             "Personal usage limit reached",
             None,
             "usage_wait_personal_pro",
@@ -1122,4 +1160,38 @@ async fn usage_wait_removes_unknown_reset_offer_when_account_read_confirms_empty
     assert!(rendered.contains("Request increase"), "{rendered}");
     assert!(rendered.contains("Keep waiting"), "{rendered}");
     assert!(rendered.contains("Resuming in "), "{rendered}");
+}
+
+/// Keep explicit model selection available when automatic Reserve switching is disabled.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn reserve_auto_switch_disabled_keeps_manual_models_available() {
+    println!("parameters=none");
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    let flags: codex_features::FeaturesToml =
+        toml::from_str("luna_reserve_auto_switch = false").unwrap();
+    let configured = codex_features::Features::from_sources(
+        codex_features::FeatureConfigSource {
+            features: Some(&flags),
+            ..Default::default()
+        },
+        codex_features::FeatureConfigSource::default(),
+        codex_features::FeatureOverrides::default(),
+    );
+    chat.config.features =
+        crate::legacy_core::config::ManagedFeatures::from_configured_with_warnings(
+            configured,
+            /*feature_requirements*/ None,
+            &mut Vec::new(),
+        )
+        .unwrap();
+    let mut response = banner_response(Some("dismissible"), json!([]));
+    response.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+    chat.update_backend_banner(&response);
+    assert!(!chat.waiting_for_luna_reserve());
+    assert!(!chat.defer_pending_turn_for_luna_reserve());
+    chat.set_model("gpt-reserve");
+    assert!(!chat.restrict_model_picker_to_luna_reserve());
+    println!("None");
 }

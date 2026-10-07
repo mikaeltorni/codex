@@ -178,15 +178,15 @@ fn guardian_v2_feature_config_preserves_boolean_toggle() {
 }
 
 #[test]
-fn guardian_thread_context_resolves_nested_config_and_profile_overrides() {
+fn guardian_thread_context_is_ignored_with_a_migration_notice() {
     let enabled_context = "[guardianv2]\nthread_context = true";
     let disabled_context = "[guardianv2]\nthread_context = false";
-    for (base, profile, enabled) in [
-        ("", "", true),
-        ("guardianv2 = false", "", true),
-        (disabled_context, "", false),
+    for (base, profile, deprecated) in [
+        ("", "", false),
+        ("guardianv2 = false", "", false),
+        (disabled_context, "", true),
         (enabled_context, "", true),
-        (enabled_context, disabled_context, false),
+        (enabled_context, disabled_context, true),
         (disabled_context, enabled_context, true),
         (
             "[guardianv2]\nenabled = false\nthread_context = true",
@@ -207,9 +207,17 @@ fn guardian_thread_context_resolves_nested_config_and_profile_overrides() {
             },
             FeatureOverrides::default(),
         );
-        let mut expected = Features::with_defaults();
-        expected.set_enabled(Feature::GuardianThreadContext, enabled);
-        assert_eq!(features.enabled_features(), expected.enabled_features());
+        assert_eq!(
+            features
+                .legacy_feature_usages()
+                .map(|usage| usage.alias.as_str())
+                .collect::<Vec<_>>(),
+            if deprecated {
+                vec!["features.guardianv2.thread_context"]
+            } else {
+                Vec::new()
+            },
+        );
     }
 }
 
@@ -224,6 +232,7 @@ persist_scores = true
 classifier_instructions = "Review this action"
 review_threshold = 0.65
 max_tool_call_lag = 2
+async_classifier_conversation_token_limit = 120000
 reasoning_effort = "minimal"
 max_action_tokens = 512
 max_classifier_instruction_tokens = 256
@@ -249,6 +258,8 @@ max_recent_non_user_entries = 12
     assert_eq!(
         features.guardianv2,
         Some(FeatureToml::Config(crate::GuardianV2ConfigToml {
+            async_classifier_mode: None,
+            async_classifier_conversation_token_limit: Some(120_000),
             enabled: Some(true),
             free_guardian: Some(true),
             thread_context: None,
@@ -309,6 +320,7 @@ fn guardian_v2_feature_config_rejects_invalid_settings() {
         "review_threshold = -0.1",
         "review_threshold = 1.1",
         "review_threshold = nan",
+        "async_classifier_conversation_token_limit = 0",
         "transcript.max_recent_non_user_entries = 0",
         "transcript.max_message_entry_tokens = 200\ntranscript.max_message_transcript_tokens = 100",
         "transcript.max_tool_entry_tokens = 200\ntranscript.max_tool_transcript_tokens = 100",
@@ -735,6 +747,8 @@ tool_namespace = "agents"
 hide_spawn_agent_metadata = true
 expose_spawn_agent_model_overrides = true
 wait_agent_enabled = false
+disable_direct_message = true
+message_board_in_memory = true
 non_code_mode_only = true
 "#,
     )
@@ -762,6 +776,9 @@ non_code_mode_only = true
             hide_spawn_agent_metadata: Some(true),
             expose_spawn_agent_model_overrides: Some(true),
             wait_agent_enabled: Some(false),
+            disable_direct_message: Some(true),
+            message_board_in_memory: Some(true),
+            message_board_remote: None,
             non_code_mode_only: Some(true),
         }))
     );
@@ -866,4 +883,29 @@ code_mode = true
         "Under-development features enabled: code_mode. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /tmp/config.toml.".to_string(),
         message
     );
+}
+
+/// Check that the Reserve switch is controlled by a recognized TOML boolean.
+/// Parameters: none.
+/// Returns: None.
+#[test]
+fn reserve_auto_switch_toml_resolves() {
+    println!("parameters=none");
+    let feature = feature_for_key("luna_reserve_auto_switch").expect("recognized Reserve flag");
+    assert!(Features::with_defaults().enabled(feature));
+    for enabled in [false, true] {
+        let parsed: FeaturesToml = toml::from_str(&format!("luna_reserve_auto_switch = {enabled}"))
+            .expect("valid feature boolean");
+        let resolved = Features::from_sources(
+            FeatureConfigSource {
+                features: Some(&parsed),
+                ..Default::default()
+            },
+            FeatureConfigSource::default(),
+            FeatureOverrides::default(),
+        );
+        assert_eq!(resolved.enabled(feature), enabled);
+    }
+    assert!(toml::from_str::<FeaturesToml>("luna_reserve_auto_switch = 'false'").is_err());
+    println!("None");
 }

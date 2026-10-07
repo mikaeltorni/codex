@@ -19,6 +19,7 @@ use crate::bottom_pane::popup_consts::accept_cancel_hint_line;
 use crate::keymap::ListAction;
 use crate::model_catalog::LUNA_RESERVE_MODEL;
 use codex_app_server_protocol::GetAccountRateLimitsResponse;
+use codex_features::Feature;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::openai_models::ModelPreset;
@@ -59,9 +60,13 @@ pub(super) struct BackendBannerState {
 }
 
 impl ChatWidget {
+    /// Check whether automatic Reserve routing should restrict the model picker.
+    /// Parameters: self - the selected task widget and its account/configuration state.
+    /// Returns: whether only Reserve settings are selectable.
     pub(super) fn restrict_model_picker_to_luna_reserve(&self) -> bool {
         // A fresh account read can allow manual recovery even without a valid saved return model.
-        self.current_model() == LUNA_RESERVE_MODEL
+        self.config.features.enabled(Feature::LunaReserveAutoSwitch)
+            && self.current_model() == LUNA_RESERVE_MODEL
             && !self.backend_banner_state.ordinary_usage_recovered
     }
 
@@ -70,8 +75,12 @@ impl ChatWidget {
         self.backend_banner_state.ordinary_usage_recovered = false;
     }
 
+    /// Check whether the selected task is awaiting an enabled Reserve transition.
+    /// Parameters: self - the selected task widget and its account/configuration state.
+    /// Returns: whether submissions must wait for Reserve settings.
     pub(super) fn waiting_for_luna_reserve(&self) -> bool {
-        self.current_model() != LUNA_RESERVE_MODEL
+        self.config.features.enabled(Feature::LunaReserveAutoSwitch)
+            && self.current_model() != LUNA_RESERVE_MODEL
             && self
                 .backend_banner_state
                 .banner
@@ -79,6 +88,9 @@ impl ChatWidget {
                 .is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER)
     }
 
+    /// Resolve an authorized fallback while honoring the Reserve switch opt-out.
+    /// Parameters: self - the selected task widget and its account/configuration state.
+    /// Returns: the eligible transition, or None when no automatic switch is allowed.
     pub(crate) fn backend_banner_fallback(&mut self) -> Option<AutomaticModelSwitch> {
         if !self.has_chatgpt_account || !self.requires_openai_auth {
             return None;
@@ -145,7 +157,8 @@ impl ChatWidget {
         // is available. Reserve is deliberately hidden from manual model selection.
         let model = if banner.banner_type == LUNA_RESERVE_BANNER {
             models.into_iter().find(|model| {
-                model.model == LUNA_RESERVE_MODEL
+                self.config.features.enabled(Feature::LunaReserveAutoSwitch)
+                    && model.model == LUNA_RESERVE_MODEL
                     && model.model != self.current_model()
                     && banner
                         .blocked_model_slug
@@ -161,6 +174,8 @@ impl ChatWidget {
                     .iter()
                     .find(|model| {
                         model.show_in_picker
+                            && (model.model != LUNA_RESERVE_MODEL
+                                || self.config.features.enabled(Feature::LunaReserveAutoSwitch))
                             && model.model == *candidate
                             && model.model != self.current_model()
                     })
@@ -381,9 +396,11 @@ impl ChatWidget {
         if self.usage_limit_wait_retry_at_ms.is_some() {
             return;
         }
-        let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
-        self.backend_banner_state.shown |= shown;
-        self.backend_banner_state.dismissed |= dismissed;
+        if self.backend_banner_state.presented.is_some() {
+            let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
+            self.backend_banner_state.shown |= shown;
+            self.backend_banner_state.dismissed |= dismissed;
+        }
         self.backend_banner_state.dismissed |= self
             .backend_banner_state
             .picker_dismissed
@@ -449,6 +466,7 @@ impl ChatWidget {
         }
         self.bottom_pane
             .dismiss_view_by_id(LUNA_RESERVE_RECOVERY_VIEW_ID);
+        self.clear_security_setup_banner();
         match (is_reserve, content) {
             (true, Some(content)) => {
                 self.bottom_pane.set_inline_banner(/*banner*/ None);
@@ -518,6 +536,7 @@ impl ChatWidget {
     }
 
     pub(crate) fn clear_backend_banner(&mut self) {
+        self.clear_security_setup_banner();
         self.backend_banner_state = BackendBannerState::default();
         self.backend_banner_notice_model = None;
         self.bottom_pane
