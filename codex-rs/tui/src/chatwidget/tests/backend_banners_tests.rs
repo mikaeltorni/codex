@@ -427,6 +427,9 @@ async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner(
 }
 
 #[tokio::test]
+/// Verify recovery actions remain usable during an active quota wait.
+/// Parameters: none.
+/// Returns: None.
 async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
@@ -501,7 +504,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::OpenUrlInBrowser { url })
-            if url == "https://chatgpt.com/codex/settings/usage?credits_modal=true"
+            if url == "https://chatgpt.com/settings/usage?credits_modal=true"
     ));
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
     assert!(matches!(

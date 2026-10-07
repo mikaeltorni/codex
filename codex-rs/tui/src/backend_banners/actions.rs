@@ -7,7 +7,7 @@ use crate::bottom_pane::SelectionItem;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
 use codex_protocol::account::PlanType;
 
-const USAGE_URL: &str = "https://chatgpt.com/codex/settings/usage";
+const USAGE_URL: &str = "https://chatgpt.com/settings/usage";
 const WORKSPACE_USAGE_URL: &str = "https://chatgpt.com/admin/usage-limits/workspace";
 
 /// Open the regular reset picker; selecting a credit still requires its existing confirmation.

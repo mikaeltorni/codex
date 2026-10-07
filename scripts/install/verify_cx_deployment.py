@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only checks for the locally installed newTest1601 CX runtime."""
+"""Read-only checks for the locally installed main CX runtime."""
 
 import hashlib
 import json
@@ -11,7 +11,7 @@ import unittest
 
 
 REPO = Path(__file__).resolve().parents[2]
-REF = "refs/heads/newTest1601"
+REF = "refs/heads/main"
 
 
 class CxDeploymentTests(unittest.TestCase):
