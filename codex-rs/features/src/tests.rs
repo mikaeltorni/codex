@@ -879,3 +879,28 @@ code_mode = true
         message
     );
 }
+
+/// Check that the Reserve switch is controlled by a recognized TOML boolean.
+/// Parameters: none.
+/// Returns: None.
+#[test]
+fn reserve_auto_switch_toml_resolves() {
+    println!("parameters=none");
+    let feature = feature_for_key("luna_reserve_auto_switch").expect("recognized Reserve flag");
+    assert!(Features::with_defaults().enabled(feature));
+    for enabled in [false, true] {
+        let parsed: FeaturesToml = toml::from_str(&format!("luna_reserve_auto_switch = {enabled}"))
+            .expect("valid feature boolean");
+        let resolved = Features::from_sources(
+            FeatureConfigSource {
+                features: Some(&parsed),
+                ..Default::default()
+            },
+            FeatureConfigSource::default(),
+            FeatureOverrides::default(),
+        );
+        assert_eq!(resolved.enabled(feature), enabled);
+    }
+    assert!(toml::from_str::<FeaturesToml>("luna_reserve_auto_switch = 'false'").is_err());
+    println!("None");
+}
