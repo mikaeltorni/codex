@@ -129,6 +129,28 @@ Private fixture directories satisfy existing IPC trust checks. The normal
 terminal color environment preserves escape-sequence assertions. The complete
 workspace suite requires separate approval under this repository's `AGENTS.md`.
 
+### Automatic GPT Reserve switching
+
+The local 0.160.1 fork accepts this setting in `~/.codex/config.toml` (or the
+selected `CODEX_HOME` / profile configuration):
+
+```toml
+[features]
+luna_reserve_auto_switch = false
+```
+
+It prevents account usage banners from automatically selecting `gpt-reserve`,
+waiting for that selection, or restricting manual model selection. Other model
+fallbacks and recovery from an existing Reserve session remain available. The
+upstream-compatible default is `true`; the native setup installer explicitly
+sets it to `false` in every discovered Codex home and profile.
+
+The public CLI also accepts `codex features disable luna_reserve_auto_switch`,
+`codex features enable luna_reserve_auto_switch`, and `codex features list`.
+Restart the CLI and resume the same conversation after changing the setting.
+The saved regression runner is documented in
+[codex-rs/tui/reserve_switch_coverage.md](codex-rs/tui/reserve_switch_coverage.md).
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)

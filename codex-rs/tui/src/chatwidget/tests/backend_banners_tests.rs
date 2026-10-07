@@ -1158,3 +1158,37 @@ async fn usage_wait_removes_unknown_reset_offer_when_account_read_confirms_empty
     assert!(rendered.contains("Keep waiting"), "{rendered}");
     assert!(rendered.contains("Resuming in "), "{rendered}");
 }
+
+/// Keep explicit model selection available when automatic Reserve switching is disabled.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn reserve_auto_switch_disabled_keeps_manual_models_available() {
+    println!("parameters=none");
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    let flags: codex_features::FeaturesToml =
+        toml::from_str("luna_reserve_auto_switch = false").unwrap();
+    let configured = codex_features::Features::from_sources(
+        codex_features::FeatureConfigSource {
+            features: Some(&flags),
+            ..Default::default()
+        },
+        codex_features::FeatureConfigSource::default(),
+        codex_features::FeatureOverrides::default(),
+    );
+    chat.config.features =
+        crate::legacy_core::config::ManagedFeatures::from_configured_with_warnings(
+            configured,
+            /*feature_requirements*/ None,
+            &mut Vec::new(),
+        )
+        .unwrap();
+    let mut response = banner_response(Some("dismissible"), json!([]));
+    response.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+    chat.update_backend_banner(&response);
+    assert!(!chat.waiting_for_luna_reserve());
+    assert!(!chat.defer_pending_turn_for_luna_reserve());
+    chat.set_model("gpt-reserve");
+    assert!(!chat.restrict_model_picker_to_luna_reserve());
+    println!("None");
+}
