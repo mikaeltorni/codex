@@ -336,3 +336,86 @@ fn running_banner_uses_remapped_navigation_and_accept() {
     );
     assert!(rx.try_recv().is_err());
 }
+
+/// Keep non-selections in the composer and require a new choice for each banner activation.
+/// Parameters: none.
+/// Returns: None.
+#[test]
+fn running_banner_requires_navigation_before_accepting_recovery_action() {
+    println!("parameters=none");
+    let (tx, mut rx) = unbounded_channel();
+    let mut pane = test_pane_with_disable_paste_burst(
+        AppEventSender::new(tx),
+        /*disable_paste_burst*/ true,
+    );
+    let mut keymap = RuntimeKeymap::defaults();
+    keymap.list.move_down = vec![crate::key_hint::plain(KeyCode::F(/*n*/ 2))];
+    keymap.list.accept = vec![crate::key_hint::plain(KeyCode::F(/*n*/ 3))];
+    pane.set_keymap_bindings(&keymap);
+    pane.set_task_running(/*running*/ true);
+    pane.set_inline_banner(Some(ActionableBanner {
+        title: "Usage limit reached".into(),
+        actions: vec![SelectionItem {
+            name: "Upgrade".into(),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::OpenUrlInBrowser {
+                    url: "https://example.com/pricing".into(),
+                });
+            })],
+            ..Default::default()
+        }],
+        visible_while_task_running: true,
+        interactive_while_task_running: true,
+        ..Default::default()
+    }));
+    let width = 90;
+    let area = Rect::new(
+        /*x*/ 0,
+        /*y*/ 0,
+        width,
+        pane.desired_height(width),
+    );
+    assert!(render_snapshot(&pane, area).contains("Upgrade"));
+    assert!(!pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+    assert!(rx.try_recv().is_err());
+    assert_eq!(pane.composer_text(), "");
+
+    // Release/repeat and draft input must not arm a future acceptance.
+    for kind in [KeyEventKind::Repeat, KeyEventKind::Release] {
+        assert!(!pane.handle_inline_banner_key(KeyEvent::new_with_kind(
+            KeyCode::F(/*n*/ 2),
+            KeyModifiers::NONE,
+            kind,
+        )));
+        assert!(!pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+        assert!(rx.try_recv().is_err());
+        assert_eq!(pane.composer_text(), "");
+    }
+    assert!(pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 2))));
+    let hidden = Rect { height: 0, ..area };
+    let _ = render_snapshot(&pane, hidden);
+    let _ = render_snapshot(&pane, area);
+    assert!(!pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+    assert!(rx.try_recv().is_err());
+    assert_eq!(pane.composer_text(), "");
+
+    assert!(pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 2))));
+    pane.set_composer_text("draft".into(), Vec::new(), Vec::new());
+    assert!(!pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 2))));
+    assert!(!pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+    assert!(rx.try_recv().is_err());
+    assert_eq!(pane.composer_text(), "draft");
+    pane.set_composer_text(String::new(), Vec::new(), Vec::new());
+
+    assert!(pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 2))));
+    assert!(rx.try_recv().is_err());
+    assert!(pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::OpenUrlInBrowser { .. })
+    ));
+    assert!(!pane.handle_inline_banner_key(KeyEvent::from(KeyCode::F(/*n*/ 3))));
+    assert!(rx.try_recv().is_err());
+    assert_eq!(pane.composer_text(), "");
+    println!("None");
+}
