@@ -61,6 +61,8 @@ pub(super) struct InlineBanner {
     pub(super) visible: Cell<bool>,
     dismissed: bool,
     visible_action_count: Cell<usize>,
+    // A running banner appears asynchronously and must not steal composer Enter.
+    pub(super) action_selection_armed: Cell<bool>,
 }
 
 enum InlineBannerContent {
@@ -72,10 +74,18 @@ enum InlineBannerContent {
 }
 
 impl Renderable for InlineBanner {
+    /// Render the notice and discard keyboard selection when its actions become hidden.
+    /// Parameters: self - the notice; area - available screen space; buf - render target.
+    /// Returns: None.
     fn render(&self, area: Rect, buf: &mut Buffer) {
+        #[cfg(test)]
+        println!("self={self:p}, area={area:?}, buf={buf:p}");
         self.visible_action_count.set(0);
         self.visible.set(!self.dismissed && !area.is_empty());
         if !self.visible.get() {
+            self.action_selection_armed.set(false);
+            #[cfg(test)]
+            println!("None");
             return;
         }
         self.shown.set(true);
@@ -101,6 +111,11 @@ impl Renderable for InlineBanner {
                 }
             }
         }
+        if self.visible_action_count.get() == 0 {
+            self.action_selection_armed.set(false);
+        }
+        #[cfg(test)]
+        println!("None");
     }
 
     fn desired_height(&self, width: u16) -> u16 {
@@ -183,7 +198,14 @@ impl BottomPane {
     }
 
     /// Display a banner above the composer without interrupting active dialogs or losing a draft.
+    /// Parameters: self - the pane; banner - replacement content or None to clear it.
+    /// Returns: None.
     pub(crate) fn set_inline_banner(&mut self, banner: Option<ActionableBanner>) {
+        #[cfg(test)]
+        println!(
+            "self={self:p}, banner={:?}",
+            banner.as_ref().map(std::ptr::from_ref)
+        );
         self.inline_banner = banner.map(|banner| {
             let dismissal = banner.dismissal;
             let visible_while_task_running = banner.visible_while_task_running;
@@ -231,9 +253,12 @@ impl BottomPane {
                 visible: Cell::new(false),
                 dismissed: false,
                 visible_action_count: Cell::new(0),
+                action_selection_armed: Cell::new(false),
             }
         });
         self.request_redraw();
+        #[cfg(test)]
+        println!("None");
     }
 
     /// Observation for the owning controller; model hiding is not a dismissal.

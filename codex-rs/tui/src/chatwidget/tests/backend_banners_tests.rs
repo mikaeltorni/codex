@@ -1192,3 +1192,64 @@ async fn reserve_auto_switch_disabled_keeps_manual_models_available() {
     assert!(!chat.restrict_model_picker_to_luna_reserve());
     println!("None");
 }
+
+/// Check that an unsolicited wait menu cannot turn composer Enter into an upgrade request.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn usage_wait_requires_explicit_navigation_before_enter_opens_upgrade() {
+    println!("parameters=none");
+    for backend_cta in [false, true] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(PlanType::Plus);
+        if backend_cta {
+            let mut response = banner_response(
+                /*presentation*/ None,
+                json!([{"action": "open_pricing_dialog", "label": "Upgrade"}]),
+            );
+            response.rate_limits.plan_type = Some(PlanType::Plus);
+            chat.update_backend_banner(&response);
+        }
+        chat.bottom_pane.set_task_running(/*running*/ true);
+        let retry_at = chrono::Utc::now().timestamp_millis() + 60_000;
+        chat.update_usage_limit_wait(Some(retry_at));
+        assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert!(rendered.contains("Upgrade"), "{rendered}");
+        assert!(events.try_recv().is_err());
+
+        // A fresh menu, redraw, countdown tick and unchanged poll are not user selection.
+        chat.refresh_usage_limit_wait_for_time_tick();
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(
+            events.try_recv().is_err(),
+            "composer Enter opened a recovery action"
+        );
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at));
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Upgrade"));
+
+        // Explicit navigation still permits keyboard selection of the upgrade CTA.
+        chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        chat.refresh_usage_limit_wait_for_time_tick();
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_matches!(events.try_recv(), Ok(AppEvent::OpenUrlInBrowser { url })
+            if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing");
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(
+            events.try_recv().is_err(),
+            "repeated Enter reopened the upgrade window"
+        );
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Upgrade"));
+
+        // The advertised numbered shortcut remains an explicit action, but cannot arm Enter.
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        assert_matches!(events.try_recv(), Ok(AppEvent::OpenUrlInBrowser { .. }));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(events.try_recv().is_err());
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at));
+    }
+    println!("None");
+}
