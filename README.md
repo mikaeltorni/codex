@@ -100,6 +100,10 @@ shortcut, or navigate with the list movement keys before pressing Enter. An
 Enter intended for the composer does not open Upgrade. Each activation consumes
 the selection, so repeated Enter presses cannot reopen the upgrade window.
 Countdown ticks and unchanged account updates preserve a deliberate selection.
+The same rule protects credit and usage links, owner requests, reset pickers,
+model switching and Keep waiting, including the focused Reserve recovery popup.
+Rendering, account polling and timer ticks do not activate these choices. Redeem
+reset still opens its picker and requires confirmation before spending a reset.
 
 ### Checking the CX test deployment
 
