@@ -34,6 +34,7 @@ use std::sync::Arc;
 
 mod bindings;
 mod chords;
+mod goal_shortcuts;
 mod vim_search;
 pub(crate) use vim_search::VimSearchKeymap;
 
@@ -127,6 +128,8 @@ pub(crate) struct AppKeymap {
 /// handler code, not here.
 #[derive(Clone, Debug)]
 pub(crate) struct ChatKeymap {
+    /// Resume an eligible goal through the native lifecycle.
+    pub(crate) resume_goal: Vec<KeyBinding>,
     /// Start or stop a voice conversation.
     pub(crate) toggle_voice: Vec<KeyBinding>,
     /// Toggle capture in the active voice session.
@@ -755,6 +758,16 @@ impl RuntimeKeymap {
                 }));
 
         let mut chat = ChatKeymap {
+            resume_goal: goal_shortcuts::resolve_goal_shortcut(
+                keymap,
+                &chords,
+                KeymapActionId {
+                    context: KeymapContext::Chat,
+                    action: "resume_goal",
+                },
+                &defaults.chat.resume_goal,
+                "alt-shift-g",
+            )?,
             toggle_voice: if voice_toggle_default_is_shadowed {
                 Vec::new()
             } else {
@@ -806,18 +819,16 @@ impl RuntimeKeymap {
         };
 
         let composer = ComposerKeymap {
-            prepend_goal: if keymap.composer.prepend_goal.is_none()
-                && (configured_main_surface_alias_is_used(keymap, "alt-g")
-                    || configured_context_alias_is_used(&keymap.vim_search, "alt-g")
-                    || chords.bindings.iter().any(|binding| {
-                        binding.action.context.overlaps(KeymapContext::Composer)
-                            && binding.chord.prefix.parts()
-                                == key_hint::alt(KeyCode::Char('g')).parts()
-                    })) {
-                Vec::new()
-            } else {
-                resolve_local!(keymap, defaults, composer, prepend_goal)
-            },
+            prepend_goal: goal_shortcuts::resolve_goal_shortcut(
+                keymap,
+                &chords,
+                KeymapActionId {
+                    context: KeymapContext::Composer,
+                    action: "prepend_goal",
+                },
+                &defaults.composer.prepend_goal,
+                "alt-g",
+            )?,
             submit: resolve_with_global!(keymap, defaults, composer, submit),
             queue: resolve_with_global!(keymap, defaults, composer, queue),
             toggle_shortcuts: resolve_with_global!(keymap, defaults, composer, toggle_shortcuts),
@@ -1675,6 +1686,10 @@ impl RuntimeKeymap {
             },
             chords: Arc::default(),
             chat: ChatKeymap {
+                resume_goal: default_bindings![raw(KeyBinding::new(
+                    KeyCode::Char('g'),
+                    KeyModifiers::ALT.union(KeyModifiers::SHIFT)
+                ))],
                 toggle_voice: default_bindings![plain(KeyCode::F(8))],
                 toggle_voice_mute: default_bindings![ctrl(KeyCode::Char('x'))],
                 chord_hints: Arc::default(),
@@ -1970,10 +1985,11 @@ impl RuntimeKeymap {
     ///    before forwarding to the composer.
     /// 2. Contexts with hard-coded sequence behavior, such as edit-previous
     ///    backtracking, intentionally stay outside this configurable keymap.
-    /// Validate bindings across overlapping input surfaces.
+    ///
     /// Parameters: self - resolved keymap. Returns: success or an actionable conflict error.
     fn validate_conflicts(&self) -> Result<(), String> {
         for (action, bindings) in [
+            ("resume_goal", &self.chat.resume_goal),
             ("toggle_voice", &self.chat.toggle_voice),
             (
                 "previous_permission_mode",
@@ -2069,6 +2085,7 @@ impl RuntimeKeymap {
                 self.chat.prompt_stack_back.as_slice(),
             ),
             ("chat.skip_question", self.chat.skip_question.as_slice()),
+            ("chat.resume_goal", self.chat.resume_goal.as_slice()),
             ("composer.submit", self.composer.submit.as_slice()),
             (
                 "composer.prepend_goal",
@@ -2230,6 +2247,11 @@ impl RuntimeKeymap {
                     self.chat.prompt_stack_back.as_slice(),
                 ),
                 ("chat.skip_question", self.chat.skip_question.as_slice()),
+                ("chat.resume_goal", self.chat.resume_goal.as_slice()),
+                (
+                    "composer.prepend_goal",
+                    self.composer.prepend_goal.as_slice(),
+                ),
                 ("composer.submit", self.composer.submit.as_slice()),
                 ("toggle_vim_mode", self.app.toggle_vim_mode.as_slice()),
                 ("toggle_fast_mode", self.app.toggle_fast_mode.as_slice()),

@@ -127,6 +127,8 @@ pub struct TuiGlobalKeymap {
 #[serde(deny_unknown_fields)]
 #[schemars(deny_unknown_fields)]
 pub struct TuiChatKeymap {
+    /// Resume an existing paused, blocked or usage-limited goal without editing the draft.
+    pub resume_goal: Option<KeybindingsSpec>,
     /// Start or stop a voice conversation.
     pub toggle_voice: Option<KeybindingsSpec>,
     /// Toggle the microphone in an active voice conversation.
