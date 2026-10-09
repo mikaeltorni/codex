@@ -11,16 +11,25 @@ const USAGE_URL: &str = "https://chatgpt.com/codex/settings/usage";
 const WORKSPACE_USAGE_URL: &str = "https://chatgpt.com/admin/usage-limits/workspace";
 
 /// Open the regular reset picker; selecting a credit still requires its existing confirmation.
+/// Parameters: name - the displayed reset action label.
+/// Returns: the reset picker action with a stable selection identity.
 pub(crate) fn rate_limit_reset_selection_item(name: String) -> SelectionItem {
-    SelectionItem {
+    #[cfg(test)]
+    println!("name={name}");
+    let result = SelectionItem {
+        selection_key: Some("reset_usage".to_string()),
         name,
         actions: vec![Box::new(|tx| {
             tx.send(AppEvent::OpenRateLimitResetCredits);
         })],
         ..Default::default()
-    }
+    };
+    #[cfg(test)]
+    println!("result={:p}", &result);
+    result
 }
 
+#[derive(Debug)]
 pub(super) enum BannerAction {
     OpenUrl(String),
     NotifyOwner(AddCreditsNudgeCreditType),
@@ -29,21 +38,40 @@ pub(super) enum BannerAction {
 
 impl BannerAction {
     /// Route backend CTAs and local recovery choices through the same app events.
+    /// Parameters: self - the resolved recovery action; name - its displayed label.
+    /// Returns: a selectable action identified by its operation and destination.
     pub(super) fn selection_item(self, name: String) -> SelectionItem {
-        let action: SelectionAction = match self {
-            Self::OpenUrl(url) => Box::new(move |tx| {
-                tx.send(AppEvent::OpenUrlInBrowser { url: url.clone() });
-            }),
-            Self::NotifyOwner(credit_type) => Box::new(move |tx| {
-                tx.send(AppEvent::SendAddCreditsNudgeEmail { credit_type });
-            }),
-            Self::ResetUsage => return rate_limit_reset_selection_item(name),
+        #[cfg(test)]
+        println!("self={self:?}, name={name}");
+        let (selection_key, action): (String, SelectionAction) = match self {
+            Self::OpenUrl(url) => (
+                format!("open_url:{url}"),
+                Box::new(move |tx| {
+                    tx.send(AppEvent::OpenUrlInBrowser { url: url.clone() });
+                }),
+            ),
+            Self::NotifyOwner(credit_type) => (
+                format!("notify_owner:{credit_type:?}"),
+                Box::new(move |tx| {
+                    tx.send(AppEvent::SendAddCreditsNudgeEmail { credit_type });
+                }),
+            ),
+            Self::ResetUsage => {
+                let result = rate_limit_reset_selection_item(name);
+                #[cfg(test)]
+                println!("result={:p}", &result);
+                return result;
+            }
         };
-        SelectionItem {
+        let result = SelectionItem {
+            selection_key: Some(selection_key),
             name,
             actions: vec![action],
             ..Default::default()
-        }
+        };
+        #[cfg(test)]
+        println!("result={:p}", &result);
+        result
     }
 }
 
@@ -132,8 +160,13 @@ impl BackendBanner {
 }
 
 /// Keep the backend pricing CTA and the wait menu's upgrade destination aligned.
+/// Parameters: plan_type - the account plan determining the advertised upgrade.
+/// Returns: the plan's pricing URL.
 fn pricing_url(plan_type: Option<PlanType>) -> String {
-    let mut url = url::Url::parse("https://chatgpt.com/").expect("valid pricing URL");
+    #[cfg(test)]
+    println!("plan_type={plan_type:?}");
+    let mut url = url::Url::parse("https://chatgpt.com/")
+        .unwrap_or_else(|error| unreachable!("invalid constant pricing URL: {error}"));
     let target = if matches!(plan_type, Some(PlanType::Plus | PlanType::ProLite)) {
         "pro"
     } else {
@@ -146,5 +179,8 @@ fn pricing_url(plan_type: Option<PlanType>) -> String {
         url.query_pairs_mut().append_pair("pro_variant", "2x");
     }
     url.set_fragment(Some("pricing"));
-    url.to_string()
+    let result = url.to_string();
+    #[cfg(test)]
+    println!("{result}");
+    result
 }

@@ -235,7 +235,7 @@ impl BottomPane {
                 hint.dim().into()
             };
             params.footer_hint = Some(hint.clone());
-            InlineBanner {
+            let mut next = InlineBanner {
                 content: if has_actions {
                     InlineBannerContent::Actions(Box::new(ListSelectionView::new(
                         params,
@@ -257,7 +257,24 @@ impl BottomPane {
                 dismissed: false,
                 visible_action_count: Cell::new(0),
                 action_selection_armed: Cell::new(SelectionActivation::NavigationRequired),
+            };
+            // Only the same interactive view may carry a deliberate selection forward.
+            // The list owns identity matching; removed or changed actions stay disarmed.
+            if interactive_while_task_running
+                && let Some(previous) = &self.inline_banner
+                && previous.interactive_while_task_running
+                && previous.shown.get()
+                && let InlineBannerContent::Actions(previous_view) = &previous.content
+                && let InlineBannerContent::Actions(next_view) = &mut next.content
+                && next_view.preserve_selection_from(previous_view)
+            {
+                // Account updates may rebuild again before the next frame. Keep the
+                // carried selection eligible, but never preserve an unseen initial default.
+                next.shown.set(true);
+                next.action_selection_armed
+                    .set(previous.action_selection_armed.get());
             }
+            next
         });
         self.request_redraw();
         #[cfg(test)]

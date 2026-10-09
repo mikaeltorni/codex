@@ -157,6 +157,9 @@ pub(crate) type OnCancelCallback = Option<Box<dyn Fn(&AppEventSender) + Send + S
 /// be accepted and are skipped by keyboard navigation.
 #[derive(Default)]
 pub(crate) struct SelectionItem {
+    /// Stable action identity for preserving selection across inline banner refreshes.
+    /// Include the destination so a refreshed action cannot silently retarget Enter.
+    pub selection_key: Option<String>,
     pub name: String,
     pub name_prefix_spans: Vec<Span<'static>>,
     pub toggle: Option<SelectionToggle>,
@@ -937,6 +940,45 @@ impl ListSelectionView {
     pub(crate) fn set_search_query(&mut self, query: String) {
         self.search_query = query;
         self.apply_filter();
+    }
+
+    /// Retain a uniquely identified, enabled action within the same refreshed view.
+    /// Parameters: self - the replacement list; previous - its prior rendered list.
+    /// Returns: whether the selected action survived without ambiguity.
+    pub(super) fn preserve_selection_from(&mut self, previous: &Self) -> bool {
+        #[cfg(test)]
+        println!("self={self:p}, previous={previous:p}");
+        if self.view_id.is_none() || self.view_id != previous.view_id {
+            #[cfg(test)]
+            println!("false");
+            return false;
+        }
+        let Some(key) = previous
+            .selected_actual_idx()
+            .and_then(|idx| previous.active_items().get(idx))
+            .and_then(|item| item.selection_key.as_ref())
+        else {
+            #[cfg(test)]
+            println!("false");
+            return false;
+        };
+        let mut matching = self.filtered_indices.iter().enumerate().filter(|(_, idx)| {
+            let item = &self.active_items()[**idx];
+            item.selection_key.as_ref() == Some(key) && Self::item_is_enabled(item)
+        });
+        let selected = matching.next().map(|(visible_idx, _)| visible_idx);
+        if selected.is_none() || matching.next().is_some() {
+            #[cfg(test)]
+            println!("false");
+            return false;
+        }
+        self.state.selected_idx = selected;
+        self.state.scroll_top = previous.state.scroll_top;
+        self.state
+            .ensure_visible(self.visible_len(), self.visible_rows(self.visible_len()));
+        #[cfg(test)]
+        println!("true");
+        true
     }
 
     pub(crate) fn take_last_selected_index(&mut self) -> Option<usize> {

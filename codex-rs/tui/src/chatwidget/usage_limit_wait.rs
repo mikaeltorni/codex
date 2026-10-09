@@ -21,7 +21,11 @@ const USAGE_LIMIT_WAIT_VIEW_ID: &str = "usage-limit-auto-resume";
 impl ChatWidget {
     /// Reuse account recovery choices during an auto-resume wait, even if the earlier account
     /// notice was dismissed, and supply the plan's upgrade/request action if no notice arrived.
+    /// Parameters: self - the widget and its current account recovery choices.
+    /// Returns: the available wait actions with stable selection identities.
     pub(super) fn usage_limit_wait_backend_banner(&mut self) -> ActionableBanner {
+        #[cfg(test)]
+        println!("self={self:p}");
         let mut content = self
             .applicable_backend_banner()
             .map(|banner| {
@@ -55,6 +59,7 @@ impl ChatWidget {
             let model = switch.model.model;
             let model_name = self.model_catalog.display_name(&model).to_string();
             content.actions.push(SelectionItem {
+                selection_key: Some(format!("switch_model:{thread_id}:{model}")),
                 name: format!("Switch to {model_name}"),
                 actions: vec![Box::new(move |tx| {
                     tx.send(AppEvent::ApplyBackendBannerFallback { thread_id });
@@ -62,6 +67,8 @@ impl ChatWidget {
                 ..Default::default()
             });
         }
+        #[cfg(test)]
+        println!("content={:p}", &content);
         content
     }
 
@@ -157,12 +164,19 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    /// Refresh account recovery content while keeping surviving actions selected.
+    /// Parameters: self - the widget and active quota wait.
+    /// Returns: None.
     pub(super) fn refresh_usage_limit_wait_banner(&mut self) {
+        #[cfg(test)]
+        println!("self={self:p}");
         let Some(retry_at_ms) = self.usage_limit_wait_retry_at_ms else {
             self.bottom_pane.set_status_resume_countdown(None);
             self.bottom_pane.set_inline_banner(None);
             self.restore_backend_banner_after_usage_wait();
             self.request_redraw();
+            #[cfg(test)]
+            println!("None");
             return;
         };
 
@@ -197,6 +211,7 @@ impl ChatWidget {
             }
             let thread_id = self.thread_id();
             banner.actions.push(SelectionItem {
+                selection_key: Some(format!("keep_waiting:{thread_id:?}")),
                 name: "Keep waiting".to_string(),
                 actions: vec![Box::new(move |tx| {
                     tx.send(AppEvent::DismissUsageLimitWaitBanner { thread_id });
@@ -211,6 +226,8 @@ impl ChatWidget {
             self.bottom_pane.set_inline_banner(Some(banner));
         }
         self.request_redraw();
+        #[cfg(test)]
+        println!("None");
     }
 }
 

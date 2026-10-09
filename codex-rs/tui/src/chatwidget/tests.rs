@@ -231,6 +231,7 @@ mod app_server;
 mod approval_requests;
 #[path = "tests/backend_banners_tests.rs"]
 mod backend_banners_tests;
+
 #[path = "tests/bedrock_catalog_tests.rs"]
 mod bedrock_catalog_tests;
 #[path = "tests/collaboration_catalog_tests.rs"]
@@ -302,6 +303,8 @@ mod terminal_title;
 #[path = "tests/tool_activity_tests.rs"]
 mod tool_activity_tests;
 mod usage;
+#[path = "tests/usage_wait_selection_tests.rs"]
+mod usage_wait_selection_tests;
 #[path = "tests/worktree_picker_tests.rs"]
 mod worktree_picker;
 
