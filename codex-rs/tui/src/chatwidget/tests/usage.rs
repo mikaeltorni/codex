@@ -13,8 +13,12 @@ use uuid::Uuid;
 
 const TEST_OVERLAY_VIEW_ID: &str = "usage-test-overlay";
 
+/// Check usage wait reset reuses picker confirmation and selected credit.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_reset_reuses_picker_confirmation_and_selected_credit() {
+    println!("parameters=none");
     for (plan, available_count, reset_choice) in [
         (PlanType::Pro, Some(2), '1'),
         (PlanType::Team, Some(2), '2'),
@@ -31,7 +35,7 @@ async fn usage_wait_reset_reuses_picker_confirmation_and_selected_credit() {
         let _ = render_bottom_popup(&chat, /*width*/ 90);
         chat.handle_key_event(KeyEvent::new(
             KeyCode::Char(reset_choice),
-            KeyModifiers::NONE,
+            KeyModifiers::ALT,
         ));
         assert_matches!(rx.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
 
@@ -93,6 +97,7 @@ async fn usage_wait_reset_reuses_picker_confirmation_and_selected_credit() {
         );
         assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
     }
+    println!("None");
 }
 
 #[tokio::test]

@@ -1,7 +1,10 @@
 //! Shared activation state for recovery menus that can appear without a user request.
 
 use crate::keymap::ListAction;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
+use crossterm::event::KeyModifiers;
 
 /// Require fresh navigation before accepting an asynchronously presented menu's default row.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -16,15 +19,42 @@ pub(crate) enum SelectionActivation {
 }
 
 impl SelectionActivation {
-    /// Classify activation permission from a semantic list action and terminal event kind.
-    /// Parameters: self - activation state; action - parsed list operation; kind - press/repeat/release.
-    /// Returns: whether this event may reach the selection view.
-    pub(super) fn permits(&mut self, action: Option<ListAction>, kind: KeyEventKind) -> bool {
+    /// Parse the explicit numbered shortcut shared by inline and focused recovery views.
+    /// Parameters: key - incoming terminal event.
+    /// Returns: a plain numbered press for the list dispatcher, or None for ordinary input.
+    pub(super) fn numbered_shortcut(key: KeyEvent) -> Option<KeyEvent> {
         #[cfg(test)]
-        println!("self={self:?}, action={action:?}, kind={kind:?}");
+        println!("key={key:?}");
+        let result = if key.kind == KeyEventKind::Press
+            && key.modifiers == KeyModifiers::ALT
+            && matches!(key.code, KeyCode::Char('1'..='9'))
+        {
+            Some(KeyEvent {
+                modifiers: KeyModifiers::NONE,
+                ..key
+            })
+        } else {
+            None
+        };
+        #[cfg(test)]
+        println!("{result:?}");
+        result
+    }
+
+    /// Classify activation permission from a semantic list action and terminal event kind.
+    /// Parameters: self - activation state; action - parsed list operation; key - incoming terminal event.
+    /// Returns: whether this event may reach the selection view.
+    pub(super) fn permits(&mut self, action: Option<ListAction>, key: KeyEvent) -> bool {
+        #[cfg(test)]
+        println!("self={self:?}, action={action:?}, key={key:?}");
         let permitted = if *self == Self::Immediate {
             true
-        } else if kind != KeyEventKind::Press {
+        } else if key.kind != KeyEventKind::Press {
+            false
+        } else if matches!(key.code, KeyCode::Char(_)) && Self::numbered_shortcut(key).is_none() {
+            // Character bindings include composer editing/history controls.
+            // Only the explicit Alt-number shortcut can bypass composer input.
+            *self = Self::NavigationRequired;
             false
         } else {
             match action {

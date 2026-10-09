@@ -62,8 +62,12 @@ fn promoted_banner_uses_picker_hints_and_preserves_the_draft() {
     }
 }
 
+/// Check hidden banner preserves input before render and after resize.
+/// Parameters: none.
+/// Returns: None.
 #[test]
 fn hidden_banner_preserves_input_before_render_and_after_resize() {
+    println!("parameters=none");
     let (tx, mut rx) = unbounded_channel();
     let mut pane = test_pane_with_disable_paste_burst(
         AppEventSender::new(tx),
@@ -136,7 +140,7 @@ fn hidden_banner_preserves_input_before_render_and_after_resize() {
         }
         assert!(rendered.contains("View usage"));
         assert!(!pane.is_normal_backtrack_mode());
-        pane.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        pane.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
         assert_eq!(pane.composer_text(), "");
         assert!(
             matches!(rx.try_recv(), Ok(AppEvent::OpenUrlInBrowser { url })
@@ -147,6 +151,7 @@ fn hidden_banner_preserves_input_before_render_and_after_resize() {
     pane.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert!(pane.is_normal_backtrack_mode());
     assert!(!render_snapshot(&pane, visible_area).contains("View usage"));
+    println!("None");
 }
 
 #[test]
@@ -251,8 +256,12 @@ fn banner_hidden_during_task_waits_for_redraw_before_accepting_dismissal() {
     assert!(!pane.is_normal_backtrack_mode());
 }
 
+/// Check information banner preserves input and honors dismissal.
+/// Parameters: none.
+/// Returns: None.
 #[test]
 fn information_banner_preserves_input_and_honors_dismissal() {
+    println!("parameters=none");
     for dismissal in [BannerDismissal::Persistent, BannerDismissal::Dismissible] {
         let (tx, _rx) = unbounded_channel();
         let mut pane = test_pane_with_disable_paste_burst(
@@ -273,7 +282,7 @@ fn information_banner_preserves_input_and_honors_dismissal() {
         );
         let rendered = render_snapshot(&pane, area);
         assert!(!rendered.contains("no matches"));
-        assert!(!rendered.contains("Press a number"));
+        assert!(!rendered.contains("alt + number"));
         assert_eq!(
             rendered.contains("esc to dismiss"),
             dismissal == BannerDismissal::Dismissible
@@ -291,6 +300,7 @@ fn information_banner_preserves_input_and_honors_dismissal() {
         pane.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
         assert_eq!(pane.composer_text(), "1");
     }
+    println!("None");
 }
 
 #[test]

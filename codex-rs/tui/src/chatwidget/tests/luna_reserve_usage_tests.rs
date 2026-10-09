@@ -26,8 +26,12 @@ fn reserve_snapshot(primary_used: i32, weekly_used: i32) -> RateLimitSnapshot {
     }
 }
 
+/// Check luna reserve selector supports arrows enter shortcuts and escape without losing draft.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn luna_reserve_selector_supports_arrows_enter_shortcuts_and_escape_without_losing_draft() {
+    println!("parameters=none");
     for (keys, destination) in [
         (
             vec![KeyCode::Down, KeyCode::Enter],
@@ -73,7 +77,14 @@ async fn luna_reserve_selector_supports_arrows_enter_shortcuts_and_escape_withou
         assert!(rendered.contains("esc to continue working"));
         while events.try_recv().is_ok() {}
         for key in keys {
-            chat.handle_key_event(KeyEvent::from(key));
+            chat.handle_key_event(KeyEvent::new(
+                key,
+                if matches!(key, KeyCode::Char('1' | '2')) {
+                    KeyModifiers::ALT
+                } else {
+                    KeyModifiers::NONE
+                },
+            ));
             if key == KeyCode::Down {
                 insta::assert_snapshot!(
                     "luna_reserve_selector_second_choice",
@@ -103,6 +114,7 @@ async fn luna_reserve_selector_supports_arrows_enter_shortcuts_and_escape_withou
         assert!(rendered.contains("saved draft"));
         assert!(rendered.contains("Luna Reserve"));
     }
+    println!("None");
 }
 
 #[tokio::test]

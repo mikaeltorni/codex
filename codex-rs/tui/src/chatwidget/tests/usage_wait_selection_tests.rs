@@ -175,3 +175,90 @@ async fn usage_wait_account_refresh_does_not_retarget_enter() {
     }
     println!("None");
 }
+
+/// Keep ordinary typing out of asynchronously presented recovery choices.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn recovery_actions_do_not_capture_ordinary_typing() {
+    println!("parameters=none");
+    for (running, reserve) in [(true, false), (false, false), (false, true), (true, true)] {
+        for (text, modifiers) in [
+            ("jk", KeyModifiers::NONE),
+            ("1", KeyModifiers::NONE),
+            ("k", KeyModifiers::NONE),
+            ("j", KeyModifiers::NONE),
+            ("jk", KeyModifiers::CONTROL),
+            ("np", KeyModifiers::CONTROL),
+        ] {
+            let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+            chat.bottom_pane.set_disable_paste_burst(/*disabled*/ true);
+            chat.has_chatgpt_account = true;
+            chat.plan_type = Some(PlanType::Plus);
+            let mut updated = response(
+                json!([{"action": "open_pricing_dialog", "label": "Upgrade"}]),
+                /*revision*/ 0,
+            );
+            if reserve {
+                updated.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+            }
+            chat.update_backend_banner(&updated);
+            if running {
+                chat.bottom_pane.set_task_running(running);
+                chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+                assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+            }
+            assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Upgrade"));
+            for character in text.chars() {
+                chat.handle_key_event(KeyEvent::new(KeyCode::Char(character), modifiers));
+                assert!(
+                    events.try_recv().is_err(),
+                    "typing {text} activated recovery: running={running}, reserve={reserve}"
+                );
+                assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Upgrade"));
+            }
+            let draft = chat.composer_text_with_pending();
+            chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let emitted = std::iter::from_fn(|| events.try_recv().ok()).collect::<Vec<_>>();
+            assert!(
+                emitted.iter().all(|event| !matches!(
+                    event,
+                    AppEvent::OpenUrlInBrowser { .. }
+                        | AppEvent::OpenRateLimitResetCredits
+                        | AppEvent::SendAddCreditsNudgeEmail { .. }
+                        | AppEvent::DismissUsageLimitWaitBanner { .. }
+                )),
+                "typing {text} then Enter activated recovery: running={running}, reserve={reserve}, emitted={emitted:?}"
+            );
+            assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Upgrade"));
+            if modifiers == KeyModifiers::NONE && (running || !reserve) {
+                assert_eq!(draft, text);
+            }
+        }
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(PlanType::Plus);
+        let mut updated = response(
+            json!([{"action": "open_pricing_dialog", "label": "Upgrade"}]),
+            /*revision*/ 0,
+        );
+        if reserve {
+            updated.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+        }
+        chat.update_backend_banner(&updated);
+        if running {
+            chat.bottom_pane.set_task_running(running);
+            chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+            assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+        }
+        let _ = render_bottom_popup(&chat, /*width*/ 100);
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
+        assert_matches!(events.try_recv(), Ok(AppEvent::OpenUrlInBrowser { url })
+            if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing");
+        assert!(events.try_recv().is_err());
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(events.try_recv().is_err());
+        assert_eq!(chat.composer_text_with_pending(), "");
+    }
+    println!("None");
+}

@@ -1,6 +1,5 @@
 ---
 source: tui/src/chatwidget/tests/usage_wait_selection_tests.rs
-assertion_line: 58
 expression: stable
 ---
   Personal usage limit reached (Auto-continue is enabled)
@@ -11,7 +10,7 @@ expression: stable
 › 2. Reset usage
   3. Keep waiting
 
-  Press a number to choose · ↑ to move up · ↓ to move down · enter to select
+  alt + number to choose · ↑ to move up · ↓ to move down · enter to select
 
 
 
