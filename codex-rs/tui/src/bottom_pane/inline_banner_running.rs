@@ -13,8 +13,13 @@ use crossterm::event::KeyModifiers;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 
+/// Describe deliberate keyboard choices for a recovery banner.
+/// Parameters: list - current list bindings.
+/// Returns: the styled recovery shortcut hint.
 pub(super) fn interactive_banner_hint(list: &ListKeymap) -> Line<'static> {
-    let mut spans = vec!["Press a number to choose".dim()];
+    #[cfg(test)]
+    println!("list={list:?}");
+    let mut spans = vec!["alt + number to choose".dim()];
     for (action, label) in [
         (ListAction::MoveUp, "to move up"),
         (ListAction::MoveDown, "to move down"),
@@ -26,11 +31,14 @@ pub(super) fn interactive_banner_hint(list: &ListKeymap) -> Line<'static> {
             spans.push(format!(" {label}").dim());
         }
     }
-    spans.into()
+    let result: Line<'static> = spans.into();
+    #[cfg(test)]
+    println!("{result:?}");
+    result
 }
 
 impl BottomPane {
-    /// Activate recovery choices only after explicit navigation or a numbered shortcut.
+    /// Activate recovery choices only after explicit non-text navigation or an Alt-number shortcut.
     /// Parameters: self - the pane and current selection; key - the incoming terminal key.
     /// Returns: whether the banner consumed the key.
     pub(super) fn handle_interactive_inline_banner_key(&mut self, key: KeyEvent) -> bool {
@@ -68,8 +76,9 @@ impl BottomPane {
             return false;
         }
         let list_action = self.keymap.list.action_for(key);
-        match key.code {
-            KeyCode::Esc if banner.dismissal == super::BannerDismissal::Persistent => {
+        let shortcut = SelectionActivation::numbered_shortcut(key);
+        match (key.code, shortcut) {
+            (KeyCode::Esc, _) if banner.dismissal == super::BannerDismissal::Persistent => {
                 banner
                     .action_selection_armed
                     .set(SelectionActivation::NavigationRequired);
@@ -77,10 +86,10 @@ impl BottomPane {
                 println!("false");
                 return false;
             }
-            KeyCode::Esc if key.modifiers == KeyModifiers::NONE => {
+            (KeyCode::Esc, _) if key.modifiers == KeyModifiers::NONE => {
                 banner.dismissed = true;
             }
-            KeyCode::Char(digit @ '1'..='9') if key.modifiers == KeyModifiers::NONE => {
+            (KeyCode::Char(digit), Some(shortcut)) => {
                 if digit as usize - '1' as usize >= banner.visible_action_count.get() {
                     banner
                         .action_selection_armed
@@ -97,7 +106,7 @@ impl BottomPane {
                 banner
                     .action_selection_armed
                     .set(SelectionActivation::NavigationRequired);
-                view.handle_key_event(key);
+                view.handle_key_event(shortcut);
                 let _ = view.take_last_selected_index();
             }
             _ if matches!(
@@ -106,7 +115,7 @@ impl BottomPane {
             ) =>
             {
                 let mut activation = banner.action_selection_armed.get();
-                let permitted = activation.permits(list_action, key.kind);
+                let permitted = activation.permits(list_action, key);
                 banner.action_selection_armed.set(activation);
                 if !permitted {
                     #[cfg(test)]

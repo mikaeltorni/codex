@@ -2622,8 +2622,12 @@ mod tests {
         assert_eq!(pane.inline_banner_lifecycle(), (true, true));
     }
 
+    /// Check backend banner snapshots and numbered actions.
+    /// Parameters: none.
+    /// Returns: None.
     #[test]
     fn backend_banner_snapshots_and_numbered_actions() {
+        println!("parameters=none");
         for (kind, action, label) in [
             ("personal_limit", "view_usage", "View usage"),
             ("workspace_member_credits", "notify_owner", "Notify owner"),
@@ -2657,7 +2661,7 @@ mod tests {
                 format!("backend_banner_{kind}"),
                 render_snapshot(&pane, area)
             );
-            pane.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+            pane.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::ALT));
             let selected = match rx.try_recv().expect("numbered CTA dispatch") {
                 AppEvent::OpenUrlInBrowser { url } => url,
                 AppEvent::SendAddCreditsNudgeEmail { credit_type } => format!("{credit_type:?}"),
@@ -2673,6 +2677,7 @@ mod tests {
             );
             assert!(pane.inline_banner.is_some());
         }
+        println!("None");
     }
 
     #[derive(Default)]

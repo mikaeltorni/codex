@@ -19,8 +19,12 @@ fn setup_identity() -> Identity {
     }
 }
 
+/// Check security setup preserves draft action and dismissal across widgets.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn security_setup_preserves_draft_action_and_dismissal_across_widgets() {
+    println!("parameters=none");
     let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.show_security_setup(setup_identity(), setup_notice());
     let rendered = normalize_snapshot_paths(render_bottom_popup(&chat, /*width*/ 70));
@@ -32,7 +36,7 @@ async fn security_setup_preserves_draft_action_and_dismissal_across_widgets() {
     replacement.inherit_security_setup(&mut chat);
     chat = replacement;
     assert!(render_bottom_popup(&chat, /*width*/ 70).contains("Set up security"));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
     assert!(
         matches!(events.try_recv(), Ok(AppEvent::OpenUrlInBrowser { url }) if url == "https://chatgpt.com/cyber")
     );
@@ -63,6 +67,7 @@ async fn security_setup_preserves_draft_action_and_dismissal_across_widgets() {
         setup_notice(),
     );
     assert!(render_bottom_popup(&replacement, /*width*/ 70).contains("Set up security"));
+    println!("None");
 }
 
 #[tokio::test]

@@ -26,8 +26,12 @@ fn banner_response(
     }
 }
 
+/// Check usage wait shows available resets without reserve or backend ctas.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
+    println!("parameters=none");
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
     chat.plan_type = Some(PlanType::Pro);
@@ -35,7 +39,7 @@ async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
     chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
     assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
     assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
     assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
 
     let mut response = banner_response(/*presentation*/ None, json!([]));
@@ -58,7 +62,7 @@ async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
         .collect::<Vec<_>>()
         .join("\n");
     insta::assert_snapshot!("usage_wait_resets_without_reserve", stable);
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
     assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -86,6 +90,7 @@ async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
     chat.update_backend_banner(&response);
     assert!(!render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
     assert_eq!(chat.available_rate_limit_reset_credits, Some(0));
+    println!("None");
 }
 
 #[tokio::test]
@@ -118,8 +123,12 @@ async fn usage_wait_does_not_duplicate_a_renderable_backend_reset_action() {
     }
 }
 
+/// Check backend banner presentation and cta do not imply recovery.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn backend_banner_presentation_and_cta_do_not_imply_recovery() {
+    println!("parameters=none");
     for presentation in [None, Some("inline"), Some("dismissible")] {
         let (mut chat, mut rx, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
         let mut response = banner_response(
@@ -148,7 +157,7 @@ async fn backend_banner_presentation_and_cta_do_not_imply_recovery() {
             initial.contains("esc to dismiss"),
             presentation == Some("dismissible")
         );
-        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
         assert!(
             rx.try_recv()
                 .is_ok_and(|event| matches!(event, AppEvent::SendAddCreditsNudgeEmail { .. }))
@@ -163,7 +172,7 @@ async fn backend_banner_presentation_and_cta_do_not_imply_recovery() {
                 normalize_snapshot_paths(render_bottom_popup(&chat, /*width*/ 70))
             );
         }
-        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
         assert!(
             rx.try_recv()
                 .is_ok_and(|event| matches!(event, AppEvent::SendAddCreditsNudgeEmail { .. }))
@@ -192,6 +201,7 @@ async fn backend_banner_presentation_and_cta_do_not_imply_recovery() {
             presentation != Some("dismissible")
         );
     }
+    println!("None");
 }
 
 #[tokio::test]
@@ -426,8 +436,12 @@ async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner(
     assert!(!restored.contains("Auto-continue is enabled"));
 }
 
+/// Check usage wait banner exposes account recovery choices while task runs.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
+    println!("parameters=none");
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
     chat.requires_openai_auth = true;
@@ -497,25 +511,25 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
         .join("\n");
     insta::assert_snapshot!("usage_wait_account_recovery_choices", snapshot);
 
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::OpenUrlInBrowser { url })
             if url == "https://chatgpt.com/codex/settings/usage?credits_modal=true"
     ));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::OpenUrlInBrowser { url })
             if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing"
     ));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::ApplyBackendBannerFallback { thread_id: event_thread_id })
             if event_thread_id == thread_id
     ));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::DismissUsageLimitWaitBanner {
@@ -527,10 +541,15 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let waiting = render_bottom_popup(&chat, /*width*/ 90);
     assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
     assert!(waiting.contains("Resuming in "), "{waiting}");
+    println!("None");
 }
 
+/// Check usage wait plus upgrade is available without visible account banner.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
+    println!("parameters=none");
     for dismissed in [false, true] {
         let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
         chat.has_chatgpt_account = true;
@@ -574,7 +593,7 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
         let lines = rendered.lines().collect::<Vec<_>>();
         let hint_row = lines
             .iter()
-            .position(|line| line.contains("Press a number to choose"))
+            .position(|line| line.contains("alt + number to choose"))
             .expect("wait menu hint");
         assert!(lines[hint_row + 1].trim().is_empty(), "{rendered}");
         assert!(lines[hint_row + 2].contains("Resuming in "), "{rendered}");
@@ -584,7 +603,7 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
         let upgrade_choice = if dismissed { '2' } else { '1' };
         chat.handle_key_event(KeyEvent::new(
             KeyCode::Char(upgrade_choice),
-            KeyModifiers::NONE,
+            KeyModifiers::ALT,
         ));
         assert!(matches!(
             events.try_recv(),
@@ -607,6 +626,7 @@ async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
             insta::assert_snapshot!("usage_wait_plus_upgrade_without_account_banner", stable);
         }
     }
+    println!("None");
 }
 
 #[tokio::test]
@@ -649,8 +669,12 @@ async fn usage_wait_countdown_tick_preserves_selected_recovery_action() {
     assert!(events.try_recv().is_err());
 }
 
+/// Check usage wait identifies personal and workspace accounts.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_identifies_personal_and_workspace_accounts() {
+    println!("parameters=none");
     for (plan, title, action, snapshot) in [
         (
             PlanType::Plus,
@@ -714,22 +738,27 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
         let reset_choice = if action.is_some() { '2' } else { '1' };
         chat.handle_key_event(KeyEvent::new(
             KeyCode::Char(reset_choice),
-            KeyModifiers::NONE,
+            KeyModifiers::ALT,
         ));
         assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
         // Only select the passive action; a rendered recovery offer never sends a request.
         let choice = if action.is_some() { '3' } else { '2' };
-        chat.handle_key_event(KeyEvent::new(KeyCode::Char(choice), KeyModifiers::NONE));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char(choice), KeyModifiers::ALT));
         assert!(matches!(
             events.try_recv(),
             Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
         ));
         assert!(events.try_recv().is_err());
     }
+    println!("None");
 }
 
+/// Check usage wait team request is available without account banner.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_team_request_is_available_without_account_banner() {
+    println!("parameters=none");
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
     chat.plan_type = Some(PlanType::Team);
@@ -747,17 +776,22 @@ async fn usage_wait_team_request_is_available_without_account_banner() {
             "missing {expected:?}: {rendered}"
         );
     }
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::SendAddCreditsNudgeEmail {
             credit_type: AddCreditsNudgeCreditType::UsageLimit,
         })
     ));
+    println!("None");
 }
 
+/// Check usage wait uses team recovery with nullable account banner.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
+    println!("parameters=none");
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
     chat.bottom_pane.set_task_running(true);
@@ -789,7 +823,7 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
     assert!(rendered.contains("Request increase"), "{rendered}");
     assert!(rendered.contains("Keep waiting"), "{rendered}");
     assert!(rendered.contains("Resuming in "), "{rendered}");
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::SendAddCreditsNudgeEmail {
@@ -813,7 +847,7 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
     );
     assert!(after_request.contains("Resuming in "), "{after_request}");
 
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::ALT));
     assert!(matches!(
         events.try_recv(),
         Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
@@ -830,6 +864,7 @@ async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
         "{after_dismissal}"
     );
     assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    println!("None");
 }
 
 #[tokio::test]
@@ -1086,8 +1121,12 @@ async fn usage_wait_omits_resets_for_empty_balances_and_non_chatgpt_accounts() {
     }
 }
 
+/// Check usage wait replaces reserve notice but preserves reset picker.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn usage_wait_replaces_reserve_notice_but_preserves_reset_picker() {
+    println!("parameters=none");
     for open_reset_picker in [false, true] {
         let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("gpt-reserve")).await;
         chat.has_chatgpt_account = true;
@@ -1105,7 +1144,7 @@ async fn usage_wait_replaces_reserve_notice_but_preserves_reset_picker() {
         chat.update_backend_banner(&response);
         assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Continue with Luna Reserve"));
         if open_reset_picker {
-            chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+            chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
             assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
             chat.show_rate_limit_reset_loading_popup();
         }
@@ -1134,6 +1173,7 @@ async fn usage_wait_replaces_reserve_notice_but_preserves_reset_picker() {
         }
         assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
     }
+    println!("None");
 }
 
 #[tokio::test]
@@ -1244,8 +1284,8 @@ async fn usage_wait_requires_explicit_navigation_before_enter_opens_upgrade() {
         );
         assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Upgrade"));
 
-        // The advertised numbered shortcut remains an explicit action, but cannot arm Enter.
-        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        // The advertised Alt-number shortcut remains an explicit action, but cannot arm Enter.
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
         assert_matches!(events.try_recv(), Ok(AppEvent::OpenUrlInBrowser { .. }));
         chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(events.try_recv().is_err());
@@ -1361,7 +1401,7 @@ async fn backend_recovery_actions_require_deliberate_selection() {
                 chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
                 chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
             } else {
-                chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+                chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
             }
             let expected = match destination {
                 "usage-owner" => AppEvent::SendAddCreditsNudgeEmail {

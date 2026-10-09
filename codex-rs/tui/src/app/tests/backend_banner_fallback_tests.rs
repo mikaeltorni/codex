@@ -96,8 +96,12 @@ pub(super) async fn start_fallback_thread(
     Ok((server, requests, proxy))
 }
 
+/// Check backend banner fallback updates task settings and keeps notice.
+/// Parameters: none.
+/// Returns: success after the asserted UI behavior, or the fixture error.
 #[tokio::test]
 async fn backend_banner_fallback_updates_task_settings_and_keeps_notice() -> Result<()> {
+    println!("parameters=none");
     for mode_kind in [ModeKind::Default, ModeKind::Plan] {
         let (mut app, mut events, mut ops) = make_test_app_with_channels().await;
         let (mut server, requests, proxy) = start_fallback_thread(&mut app).await?;
@@ -166,7 +170,7 @@ async fn backend_banner_fallback_updates_task_settings_and_keeps_notice() -> Res
             );
         }
         app.chat_widget
-            .handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+            .handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
         let queued = std::iter::from_fn(|| events.try_recv().ok()).collect::<Vec<_>>();
         assert!(queued.iter().any(|event| matches!(event, AppEvent::OpenUrlInBrowser { url } if url == "https://chatgpt.com/codex/settings/usage")));
         let notices = queued
@@ -221,6 +225,7 @@ async fn backend_banner_fallback_updates_task_settings_and_keeps_notice() -> Res
         server.shutdown().await?;
         proxy.await??;
     }
+    println!("Ok(())");
     Ok(())
 }
 
@@ -312,9 +317,13 @@ async fn backend_banner_fallback_keeps_existing_recovery_without_candidate() -> 
     Ok(())
 }
 
+/// Check backend banner fallback handles settings failure and queued manual selection.
+/// Parameters: none.
+/// Returns: success after the asserted UI behavior, or the fixture error.
 #[tokio::test]
 async fn backend_banner_fallback_handles_settings_failure_and_queued_manual_selection() -> Result<()>
 {
+    println!("parameters=none");
     use futures::SinkExt;
     use futures::StreamExt;
     use tokio_tungstenite::tungstenite::Message;
@@ -444,7 +453,7 @@ async fn backend_banner_fallback_handles_settings_failure_and_queued_manual_sele
                 );
             }
             app.chat_widget
-                .handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+                .handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
             assert!(
                 std::iter::from_fn(|| events.try_recv().ok())
                     .any(|event| matches!(event, AppEvent::OpenUrlInBrowser { .. }))
@@ -473,6 +482,7 @@ async fn backend_banner_fallback_handles_settings_failure_and_queued_manual_sele
         server.shutdown().await?;
         fake.await??;
     }
+    println!("Ok(())");
     Ok(())
 }
 

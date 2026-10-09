@@ -1157,12 +1157,17 @@ impl BottomPaneView for ListSelectionView {
         println!("self={self:p}, key_event={key_event:?}");
         if !self
             .activation
-            .permits(self.keymap.action_for(key_event), key_event.kind)
+            .permits(self.keymap.action_for(key_event), key_event)
         {
             #[cfg(test)]
             println!("None");
             return;
         }
+        let key_event = if self.activation == SelectionActivation::Immediate {
+            key_event
+        } else {
+            SelectionActivation::numbered_shortcut(key_event).unwrap_or(key_event)
+        };
         // Searchable lists reserve printable characters for query input. This
         // keeps vim-style plain j/k/h/l useful in non-search lists without
         // making those letters impossible to type into a filter.
