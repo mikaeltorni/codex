@@ -108,6 +108,7 @@ pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
     action("chat", "Chat", "toggle_voice", "Start or stop a voice conversation."),
     action("chat", "Chat", "toggle_voice_mute", "Mute or unmute the voice microphone."),
     action("composer", "Composer", "submit", "Submit the current composer draft."),
+    action("composer", "Composer", "prepend_goal", "Prepend /goal to the draft without submitting it."),
     action("composer", "Composer", "queue", "Queue the draft while a task is running."),
     action("composer", "Composer", "toggle_shortcuts", "Show or hide the composer shortcut overlay."),
     action("composer", "Composer", "history_search_previous", "Open history search or move to the previous match."),
@@ -265,6 +266,9 @@ pub(super) fn action_label(action: &str) -> String {
 /// editor must preserve: absent means use fallback/default resolution, `Some`
 /// with one or more keys is a custom binding, and `Some(Many([]))` is an
 /// explicit unbind.
+/// Resolve the mutable configuration slot for a native action.
+/// Parameters: keymap - configuration; context - input scope; action - action name.
+/// Returns: the matching slot, or None for an unknown action.
 pub(super) fn binding_slot<'a>(
     keymap: &'a mut TuiKeymap,
     context: &str,
@@ -293,6 +297,7 @@ pub(super) fn binding_slot<'a>(
         ("chat", "toggle_voice") => Some(&mut keymap.chat.toggle_voice),
         ("chat", "toggle_voice_mute") => Some(&mut keymap.chat.toggle_voice_mute),
         ("composer", "submit") => Some(&mut keymap.composer.submit),
+        ("composer", "prepend_goal") => Some(&mut keymap.composer.prepend_goal),
         ("composer", "queue") => Some(&mut keymap.composer.queue),
         ("composer", "toggle_shortcuts") => Some(&mut keymap.composer.toggle_shortcuts),
         ("composer", "history_search_previous") => Some(&mut keymap.composer.history_search_previous),

@@ -295,6 +295,7 @@ define_runtime_action_bindings! {
     ],
     "chat" => Voice, chat, chat [toggle_voice_mute],
     "composer" => Composer, composer, composer [
+        prepend_goal,
         submit,
         queue,
         toggle_shortcuts,

@@ -154,6 +154,8 @@ pub struct TuiChatKeymap {
 #[serde(deny_unknown_fields)]
 #[schemars(deny_unknown_fields)]
 pub struct TuiComposerKeymap {
+    /// Prepend `/goal ` to the draft without submitting it.
+    pub prepend_goal: Option<KeybindingsSpec>,
     /// Submit the current composer draft.
     pub submit: Option<KeybindingsSpec>,
     /// Queue the current composer draft while a task is running.

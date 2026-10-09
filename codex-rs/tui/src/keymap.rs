@@ -165,6 +165,8 @@ impl ChatKeymap {
 /// The conflict validator prevents this by checking app + composer uniqueness.
 #[derive(Clone, Debug)]
 pub(crate) struct ComposerKeymap {
+    /// Prepend `/goal ` without submitting the draft.
+    pub(crate) prepend_goal: Vec<KeyBinding>,
     /// Submit current draft.
     pub(crate) submit: Vec<KeyBinding>,
     /// Queue current draft while a task is running.
@@ -633,6 +635,7 @@ impl RuntimeKeymap {
     /// The error text includes the relevant config path and a concrete next step.
     /// Calling code should not merge bindings across unrelated contexts before
     /// dispatch, or conflict guarantees from this resolver no longer hold.
+    /// Parameters: keymap - configured action overrides. Returns: resolved bindings or a conflict error.
     pub(crate) fn from_config(keymap: &TuiKeymap) -> Result<Self, String> {
         let defaults = Self::built_in_defaults();
         let chords = Arc::new(RuntimeChordKeymap::from_config(keymap)?);
@@ -803,6 +806,18 @@ impl RuntimeKeymap {
         };
 
         let composer = ComposerKeymap {
+            prepend_goal: if keymap.composer.prepend_goal.is_none()
+                && (configured_main_surface_alias_is_used(keymap, "alt-g")
+                    || configured_context_alias_is_used(&keymap.vim_search, "alt-g")
+                    || chords.bindings.iter().any(|binding| {
+                        binding.action.context.overlaps(KeymapContext::Composer)
+                            && binding.chord.prefix.parts()
+                                == key_hint::alt(KeyCode::Char('g')).parts()
+                    })) {
+                Vec::new()
+            } else {
+                resolve_local!(keymap, defaults, composer, prepend_goal)
+            },
             submit: resolve_with_global!(keymap, defaults, composer, submit),
             queue: resolve_with_global!(keymap, defaults, composer, queue),
             toggle_shortcuts: resolve_with_global!(keymap, defaults, composer, toggle_shortcuts),
@@ -1640,6 +1655,8 @@ impl RuntimeKeymap {
     /// Some actions intentionally include compatibility variants (for example
     /// both `?` and `shift-?`) because terminals disagree on whether SHIFT is
     /// preserved for certain printable/control chords.
+    /// Construct the native defaults before configuration overrides.
+    /// Parameters: none. Returns: the default runtime keymap.
     fn built_in_defaults() -> Self {
         Self {
             app: AppKeymap {
@@ -1677,6 +1694,7 @@ impl RuntimeKeymap {
                 skip_question: default_bindings![ctrl(KeyCode::Char(']'))],
             },
             composer: ComposerKeymap {
+                prepend_goal: default_bindings![alt(KeyCode::Char('g'))],
                 submit: default_bindings![plain(KeyCode::Enter)],
                 queue: default_bindings![plain(KeyCode::Tab)],
                 toggle_shortcuts: default_bindings![
@@ -1952,6 +1970,8 @@ impl RuntimeKeymap {
     ///    before forwarding to the composer.
     /// 2. Contexts with hard-coded sequence behavior, such as edit-previous
     ///    backtracking, intentionally stay outside this configurable keymap.
+    /// Validate bindings across overlapping input surfaces.
+    /// Parameters: self - resolved keymap. Returns: success or an actionable conflict error.
     fn validate_conflicts(&self) -> Result<(), String> {
         for (action, bindings) in [
             ("toggle_voice", &self.chat.toggle_voice),
@@ -2050,6 +2070,10 @@ impl RuntimeKeymap {
             ),
             ("chat.skip_question", self.chat.skip_question.as_slice()),
             ("composer.submit", self.composer.submit.as_slice()),
+            (
+                "composer.prepend_goal",
+                self.composer.prepend_goal.as_slice(),
+            ),
             ("composer.queue", self.composer.queue.as_slice()),
             (
                 "composer.toggle_shortcuts",

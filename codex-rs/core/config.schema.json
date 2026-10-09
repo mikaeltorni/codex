@@ -4475,6 +4475,7 @@
             "composer": {
               "history_search_next": null,
               "history_search_previous": null,
+              "prepend_goal": null,
               "queue": null,
               "submit": null,
               "toggle_shortcuts": null
@@ -5040,6 +5041,14 @@
           ],
           "description": "Open reverse history search or move to the previous match."
         },
+        "prepend_goal": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/KeybindingsSpec"
+            }
+          ],
+          "description": "Prepend `/goal ` to the draft without submitting it."
+        },
         "queue": {
           "allOf": [
             {
@@ -5434,6 +5443,7 @@
           "default": {
             "history_search_next": null,
             "history_search_previous": null,
+            "prepend_goal": null,
             "queue": null,
             "submit": null,
             "toggle_shortcuts": null
