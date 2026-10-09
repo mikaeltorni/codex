@@ -5,6 +5,7 @@
 
 use super::BottomPane;
 use super::BottomPaneView;
+use super::SelectionActivation;
 use super::SelectionItem;
 use super::SelectionViewParams;
 use super::list_selection_view::ListSelectionView;
@@ -62,7 +63,7 @@ pub(super) struct InlineBanner {
     dismissed: bool,
     visible_action_count: Cell<usize>,
     // A running banner appears asynchronously and must not steal composer Enter.
-    pub(super) action_selection_armed: Cell<bool>,
+    pub(super) action_selection_armed: Cell<SelectionActivation>,
 }
 
 enum InlineBannerContent {
@@ -83,7 +84,8 @@ impl Renderable for InlineBanner {
         self.visible_action_count.set(0);
         self.visible.set(!self.dismissed && !area.is_empty());
         if !self.visible.get() {
-            self.action_selection_armed.set(false);
+            self.action_selection_armed
+                .set(SelectionActivation::NavigationRequired);
             #[cfg(test)]
             println!("None");
             return;
@@ -112,7 +114,8 @@ impl Renderable for InlineBanner {
             }
         }
         if self.visible_action_count.get() == 0 {
-            self.action_selection_armed.set(false);
+            self.action_selection_armed
+                .set(SelectionActivation::NavigationRequired);
         }
         #[cfg(test)]
         println!("None");
@@ -253,7 +256,7 @@ impl BottomPane {
                 visible: Cell::new(false),
                 dismissed: false,
                 visible_action_count: Cell::new(0),
-                action_selection_armed: Cell::new(false),
+                action_selection_armed: Cell::new(SelectionActivation::NavigationRequired),
             }
         });
         self.request_redraw();

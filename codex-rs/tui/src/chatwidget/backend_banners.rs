@@ -13,6 +13,7 @@ use crate::backend_banners::BackendBanner;
 use crate::backend_banners::BannerPresentation;
 use crate::backend_banners::LUNA_RESERVE_BANNER;
 use crate::backend_banners::LUNA_RESERVE_RECOVERY_VIEW_ID;
+use crate::bottom_pane::SelectionActivation;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::popup_consts::accept_cancel_hint_line;
@@ -407,8 +408,15 @@ impl ChatWidget {
             .load(Ordering::Relaxed);
     }
 
+    /// Present current recovery copy without pre-authorizing its first action.
+    /// Parameters: self - account banner and selected task state.
+    /// Returns: None.
     pub(super) fn refresh_backend_banner_visibility(&mut self) {
+        #[cfg(test)]
+        println!("self={self:p}");
         if self.usage_limit_wait_retry_at_ms.is_some() {
+            #[cfg(test)]
+            println!("None");
             return;
         }
         let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
@@ -437,6 +445,8 @@ impl ChatWidget {
             !self.backend_banner_state.dismissed && matches_selected_model
         });
         if banner == self.backend_banner_state.presented.as_ref() {
+            #[cfg(test)]
+            println!("None");
             return;
         }
         let is_reserve = banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
@@ -472,6 +482,7 @@ impl ChatWidget {
                 self.bottom_pane.set_inline_banner(/*banner*/ None);
                 let mut params: SelectionViewParams = content.into();
                 params.view_id = Some(LUNA_RESERVE_RECOVERY_VIEW_ID);
+                params.activation = SelectionActivation::NavigationRequired;
                 if self.current_model() == LUNA_RESERVE_MODEL {
                     self.luna_reserve_notice_account_id =
                         self.backend_banner_state.account_id.clone();
@@ -510,6 +521,8 @@ impl ChatWidget {
         {
             self.maybe_show_pending_rate_limit_prompt();
         }
+        #[cfg(test)]
+        println!("None");
     }
 
     pub(super) fn sync_backend_banner_view(&mut self) {

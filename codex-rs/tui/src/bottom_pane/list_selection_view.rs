@@ -34,6 +34,7 @@ use crate::render::renderable::ColumnRenderable;
 use crate::render::renderable::Renderable;
 
 use super::CancellationEvent;
+use super::SelectionActivation;
 use super::bottom_pane_view::BottomPaneView;
 use super::bottom_pane_view::ViewCompletion;
 pub(crate) use super::picker_style::PickerSurface;
@@ -217,6 +218,8 @@ pub(crate) struct SelectionViewParams {
     /// Blank rows after the header; defaults to one. Inline banners use zero.
     pub header_gap: u16,
     pub initial_selected_idx: Option<usize>,
+    /// Recovery popups require navigation before accepting their default row.
+    pub activation: SelectionActivation,
 
     /// Rich content rendered beside (wide terminals) or below (narrow terminals)
     /// the list items, inside the bordered menu surface. Used by the theme picker
@@ -249,8 +252,13 @@ pub(crate) struct SelectionViewParams {
 }
 
 impl Default for SelectionViewParams {
+    /// Create the standard picker configuration.
+    /// Parameters: none.
+    /// Returns: default selection-view parameters.
     fn default() -> Self {
-        Self {
+        #[cfg(test)]
+        println!("parameters=none");
+        let result = Self {
             picker_surface: PickerSurface::default(),
             max_visible_rows: MAX_POPUP_ROWS,
             reserve_result_rows: false,
@@ -273,6 +281,7 @@ impl Default for SelectionViewParams {
             header_view_all_hint: None,
             header_gap: 1,
             initial_selected_idx: None,
+            activation: SelectionActivation::Immediate,
             side_content: Box::new(()),
             side_content_width: SideContentWidth::default(),
             side_content_min_width: 0,
@@ -281,7 +290,10 @@ impl Default for SelectionViewParams {
             on_selection_changed: None,
             allow_cancel: true,
             on_cancel: None,
-        }
+        };
+        #[cfg(test)]
+        println!("result={:p}", &result);
+        result
     }
 }
 
@@ -319,6 +331,7 @@ pub(crate) struct ListSelectionView {
     header_view_all_hint: Option<ShortcutHint>,
     header_gap: u16,
     initial_selected_idx: Option<usize>,
+    activation: SelectionActivation,
     side_content: Box<dyn Renderable>,
     side_content_width: SideContentWidth,
     side_content_min_width: u16,
@@ -400,11 +413,18 @@ impl ListSelectionView {
     /// When search is enabled, rows without `search_value` will disappear as
     /// soon as the query is non-empty, which can look like dropped data unless
     /// callers intentionally populate that field.
+    /// Parameters: params - picker configuration; app_event_tx - action sender; keymap - runtime list bindings.
+    /// Returns: initialized selection view.
     pub fn new(
         params: SelectionViewParams,
         app_event_tx: AppEventSender,
         keymap: ListKeymap,
     ) -> Self {
+        #[cfg(test)]
+        println!(
+            "params={:p}, app_event_tx={:p}, keymap={keymap:?}",
+            &params, &app_event_tx
+        );
         let mut header = params.header;
         if params.title.is_some() || params.subtitle.is_some() {
             let title = params.title.map(|title| Line::from(title.bold()));
@@ -462,6 +482,7 @@ impl ListSelectionView {
             header_view_all_hint: params.header_view_all_hint,
             header_gap: params.header_gap,
             initial_selected_idx: params.initial_selected_idx,
+            activation: params.activation,
             side_content: params.side_content,
             side_content_width: params.side_content_width,
             side_content_min_width: params.side_content_min_width,
@@ -476,6 +497,8 @@ impl ListSelectionView {
         if s.tabs_enabled() && !has_initial_selected_idx && s.state.selected_idx.is_none() {
             s.select_first_enabled_row();
         }
+        #[cfg(test)]
+        println!("result={:p}", &s);
         s
     }
 
@@ -1084,7 +1107,20 @@ impl BottomPaneView for ListSelectionView {
         crate::keymap::KeymapContextSet::new(crate::keymap::KeymapContext::List)
     }
 
+    /// Route permitted keys to the existing picker operations.
+    /// Parameters: self - active picker; key_event - incoming terminal key.
+    /// Returns: None.
     fn handle_key_event(&mut self, key_event: KeyEvent) {
+        #[cfg(test)]
+        println!("self={self:p}, key_event={key_event:?}");
+        if !self
+            .activation
+            .permits(self.keymap.action_for(key_event), key_event.kind)
+        {
+            #[cfg(test)]
+            println!("None");
+            return;
+        }
         // Searchable lists reserve printable characters for query input. This
         // keeps vim-style plain j/k/h/l useful in non-search lists without
         // making those letters impossible to type into a filter.
@@ -1189,6 +1225,8 @@ impl BottomPaneView for ListSelectionView {
                         && Self::item_is_enabled(item)
                 }) {
                     self.select_shortcut(idx);
+                    #[cfg(test)]
+                    println!("None");
                     return;
                 }
                 if let Some(idx) = c
@@ -1201,6 +1239,8 @@ impl BottomPaneView for ListSelectionView {
             }
             _ => {}
         }
+        #[cfg(test)]
+        println!("None");
     }
 
     fn handle_paste(&mut self, pasted: String) -> bool {

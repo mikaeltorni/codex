@@ -2,6 +2,7 @@
 
 use super::super::BottomPane;
 use super::super::BottomPaneView;
+use super::super::SelectionActivation;
 use super::InlineBannerContent;
 use crate::keymap::ListAction;
 use crate::keymap::ListKeymap;
@@ -45,7 +46,9 @@ impl BottomPane {
             if key.kind == KeyEventKind::Press
                 && let Some(banner) = self.inline_banner.as_mut()
             {
-                banner.action_selection_armed.set(false);
+                banner
+                    .action_selection_armed
+                    .set(SelectionActivation::NavigationRequired);
             }
             #[cfg(test)]
             println!("false");
@@ -57,7 +60,9 @@ impl BottomPane {
             return false;
         };
         if !banner.visible.get() || banner.dismissed {
-            banner.action_selection_armed.set(false);
+            banner
+                .action_selection_armed
+                .set(SelectionActivation::NavigationRequired);
             #[cfg(test)]
             println!("false");
             return false;
@@ -65,7 +70,9 @@ impl BottomPane {
         let list_action = self.keymap.list.action_for(key);
         match key.code {
             KeyCode::Esc if banner.dismissal == super::BannerDismissal::Persistent => {
-                banner.action_selection_armed.set(false);
+                banner
+                    .action_selection_armed
+                    .set(SelectionActivation::NavigationRequired);
                 #[cfg(test)]
                 println!("false");
                 return false;
@@ -75,7 +82,9 @@ impl BottomPane {
             }
             KeyCode::Char(digit @ '1'..='9') if key.modifiers == KeyModifiers::NONE => {
                 if digit as usize - '1' as usize >= banner.visible_action_count.get() {
-                    banner.action_selection_armed.set(false);
+                    banner
+                        .action_selection_armed
+                        .set(SelectionActivation::NavigationRequired);
                     #[cfg(test)]
                     println!("false");
                     return false;
@@ -85,7 +94,9 @@ impl BottomPane {
                     println!("false");
                     return false;
                 };
-                banner.action_selection_armed.set(false);
+                banner
+                    .action_selection_armed
+                    .set(SelectionActivation::NavigationRequired);
                 view.handle_key_event(key);
                 let _ = view.take_last_selected_index();
             }
@@ -94,7 +105,10 @@ impl BottomPane {
                 Some(ListAction::MoveUp | ListAction::MoveDown | ListAction::Accept)
             ) =>
             {
-                if list_action == Some(ListAction::Accept) && !banner.action_selection_armed.get() {
+                let mut activation = banner.action_selection_armed.get();
+                let permitted = activation.permits(list_action, key.kind);
+                banner.action_selection_armed.set(activation);
+                if !permitted {
                     #[cfg(test)]
                     println!("false");
                     return false;
@@ -104,15 +118,13 @@ impl BottomPane {
                     println!("false");
                     return false;
                 };
-                // Consume the selection on activation so repeated Enter cannot reopen a URL.
-                banner
-                    .action_selection_armed
-                    .set(list_action != Some(ListAction::Accept));
                 view.handle_key_event(key);
                 let _ = view.take_last_selected_index();
             }
             _ => {
-                banner.action_selection_armed.set(false);
+                banner
+                    .action_selection_armed
+                    .set(SelectionActivation::NavigationRequired);
                 #[cfg(test)]
                 println!("false");
                 return false;
