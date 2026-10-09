@@ -99,7 +99,9 @@ The usage-limit recovery banner requires an explicit choice: use its numbered
 shortcut, or navigate with the list movement keys before pressing Enter. An
 Enter intended for the composer does not open Upgrade. Each activation consumes
 the selection, so repeated Enter presses cannot reopen the upgrade window.
-Countdown ticks and unchanged account updates preserve a deliberate selection.
+Countdown ticks and account updates preserve the selected action, including when
+banner text changes or actions are reordered or renamed. If that action disappears
+or its destination changes, navigate again before pressing Enter.
 The same rule protects credit and usage links, owner requests, reset pickers,
 model switching and Keep waiting, including the focused Reserve recovery popup.
 Rendering, account polling and timer ticks do not activate these choices. Redeem
