@@ -2,17 +2,19 @@
 
 use super::BackendBanner;
 use super::BannerPresentation;
-use super::actions::BannerAction;
-use crate::app_event::AppEvent;
 use crate::bottom_pane::ActionableBanner;
 use crate::bottom_pane::BannerDismissal;
-use crate::bottom_pane::SelectionItem;
 use crate::clock_format::ClockFormat;
 use chrono::DateTime;
 use chrono::Local;
 
 impl BackendBanner {
+    /// Render account copy and actions through the shared recovery action owner.
+    /// Parameters: self - the account banner; clock_format - the reset timestamp display format.
+    /// Returns: the banner content with stable, destination-aware action identities.
     pub(crate) fn actionable_banner(&self, clock_format: ClockFormat) -> ActionableBanner {
+        #[cfg(test)]
+        println!("self={self:?}, clock_format={clock_format:?}");
         let reset_time = self
             .reset_at
             .and_then(|timestamp| DateTime::from_timestamp(timestamp, /*nsecs*/ 0))
@@ -44,27 +46,10 @@ impl BackendBanner {
                     return None;
                 }
                 let action = self.resolve_action(&cta.action)?;
-                Some(SelectionItem {
-                    name: cta.label.clone(),
-                    actions: vec![Box::new(move |tx| {
-                        tx.send(match &action {
-                            BannerAction::OpenUrl(url) => {
-                                AppEvent::OpenUrlInBrowser { url: url.clone() }
-                            }
-                            BannerAction::NotifyOwner(credit_type) => {
-                                AppEvent::SendAddCreditsNudgeEmail {
-                                    credit_type: *credit_type,
-                                }
-                            }
-                            BannerAction::ResetUsage => AppEvent::OpenRateLimitResetCredits,
-                        })
-                    })],
-                    dismiss_on_select: false,
-                    ..Default::default()
-                })
+                Some(action.selection_item(cta.label.clone()))
             })
             .collect::<Vec<_>>();
-        ActionableBanner {
+        let result = ActionableBanner {
             title: copy(&self.title),
             description: copy(&self.description),
             actions,
@@ -74,6 +59,9 @@ impl BackendBanner {
                 BannerDismissal::Persistent
             },
             ..Default::default()
-        }
+        };
+        #[cfg(test)]
+        println!("result={:p}", &result);
+        result
     }
 }

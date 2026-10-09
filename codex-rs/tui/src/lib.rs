@@ -2,7 +2,9 @@
 // The standalone `codex-tui` binary prints a short help message before the
 // alternate‑screen mode starts; that file opts‑out locally via `allow`.
 #![recursion_limit = "256"]
-#![deny(clippy::print_stdout, clippy::print_stderr)]
+// Test builds capture parameter/result traces without writing into a live terminal.
+#![cfg_attr(not(test), deny(clippy::print_stdout))]
+#![deny(clippy::print_stderr)]
 #![deny(clippy::disallowed_methods)]
 use crate::legacy_core::config::Config;
 use crate::legacy_core::config::ConfigBuilder;
