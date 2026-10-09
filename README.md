@@ -95,10 +95,12 @@ usage-limit wait keeps its countdown visible while account banners update.
 Dismissing an unrelated notice leaves a hidden account banner available when
 switching back to its model. Reserve recovery and reset actions remain available.
 
-The usage-limit recovery banner requires an explicit choice: use its numbered
-shortcut, or navigate with the list movement keys before pressing Enter. An
-Enter intended for the composer does not open Upgrade. Each activation consumes
-the selection, so repeated Enter presses cannot reopen the upgrade window.
+The usage-limit recovery banner requires an explicit choice: press `Alt` plus
+the displayed action number, or navigate with the arrow keys before pressing
+Enter. Ordinary numbers, `j`/`k`, and Ctrl editing/history keys do not select or
+arm recovery actions. An Enter intended for the composer does not open Upgrade.
+Each activation consumes the selection, so repeated Enter presses cannot reopen
+the upgrade window.
 Countdown ticks and account updates preserve the selected action, including when
 banner text changes or actions are reordered or renamed. If that action disappears
 or its destination changes, navigate again before pressing Enter.
