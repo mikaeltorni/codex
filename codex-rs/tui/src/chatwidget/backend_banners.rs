@@ -326,6 +326,7 @@ impl ChatWidget {
 
     pub(crate) fn update_backend_banner(&mut self, response: &GetAccountRateLimitsResponse) {
         self.observe_backend_banner_view();
+        let reset_availability_changed = self.record_rate_limit_reset_availability(response);
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners
         // still block it; percentages, sparse notifications and reset timestamps cannot prove it.
@@ -366,6 +367,7 @@ impl ChatWidget {
                         == new.blocked_model_slug.as_ref().or(new.model_slug.as_ref())
                     && old.fallback_model_slugs == new.fallback_model_slugs
             });
+        let banner_changed = self.backend_banner_state.banner != banner;
         self.backend_banner_state.banner = banner;
         if !same_occurrence {
             self.backend_banner_state.shown = false;
@@ -376,7 +378,7 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        self.refresh_backend_banner_visibility();
+        self.refresh_after_backend_banner_update(banner_changed || reset_availability_changed);
     }
 
     fn reserve_notice_already_shown(&self) -> bool {
@@ -391,6 +393,9 @@ impl ChatWidget {
     }
 
     fn observe_backend_banner_view(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
         if self.backend_banner_state.presented.is_some() {
             let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
             self.backend_banner_state.shown |= shown;
@@ -403,6 +408,9 @@ impl ChatWidget {
     }
 
     pub(super) fn refresh_backend_banner_visibility(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
         let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
             // Keep recovery actions available while switching, including on older servers
             // without settings/update. The copy below describes the accepted model only.
@@ -536,3 +544,6 @@ impl ChatWidget {
         self.bottom_pane.set_inline_banner(/*banner*/ None);
     }
 }
+
+#[path = "backend_banners_usage_wait.rs"]
+mod usage_wait;

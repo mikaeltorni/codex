@@ -14,6 +14,7 @@ mod provider_selection_tests;
 mod realtime;
 mod rollout_history;
 mod thread_list;
+mod turn_settings;
 mod web_search;
 
 #[cfg(test)]

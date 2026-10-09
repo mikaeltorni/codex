@@ -8,6 +8,7 @@ use crate::model_catalog::LUNA_RESERVE_MODEL;
 use crate::model_catalog::model_display_name;
 use crate::service_tier_resolution;
 use codex_app_server_protocol::ThreadSettingsUpdateParams;
+use codex_app_server_protocol::TurnSettingsUpdateParams;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::openai_models::ReasoningEffort;
@@ -95,7 +96,37 @@ impl App {
         // Older remote servers can decline this method. Keep the existing recovery UI in that
         // case or on failure, rather than changing local selection before the task accepts it.
         // Event dispatch awaits this operation; a queued manual model selection runs afterward.
-        if self.send_thread_settings_update(app_server, params).await {
+        let settings_updated = if self.chat_widget.usage_limit_wait_retry_at_ms.is_some() {
+            let Some(turn_id) = self.active_turn_id_for_thread(thread_id).await else {
+                return;
+            };
+            match app_server
+                .turn_settings_update(TurnSettingsUpdateParams {
+                    thread_id: thread_id.to_string(),
+                    turn_id,
+                    model: params.model.clone(),
+                    effort: params.effort.clone(),
+                    service_tier: params.service_tier.clone(),
+                    ..Default::default()
+                })
+                .await
+            {
+                Ok(true) => {
+                    // Keep later turns on the accepted fallback as well.
+                    self.send_thread_settings_update(app_server, params).await;
+                    true
+                }
+                Ok(false) => false,
+                Err(err) => {
+                    self.chat_widget
+                        .add_error_message(format!("Failed to update turn settings: {err}"));
+                    false
+                }
+            }
+        } else {
+            self.send_thread_settings_update(app_server, params).await
+        };
+        if settings_updated {
             self.chat_widget.finish_backend_banner_fallback(mode);
             self.sync_active_thread_service_tier_to_cached_session()
                 .await;

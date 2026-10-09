@@ -7,6 +7,10 @@ use serde::Deserialize;
 
 mod actions;
 mod render;
+mod usage_wait;
+
+pub(crate) use actions::rate_limit_reset_selection_item;
+pub(crate) use usage_wait::banner_for_usage_limit_wait;
 
 pub(crate) const LUNA_RESERVE_BANNER: &str = "luna_reserve";
 pub(crate) const LUNA_RESERVE_RECOVERY_VIEW_ID: &str = "luna-reserve-recovery";
@@ -24,9 +28,9 @@ pub(crate) struct BackendBanner {
     pub(crate) reset_at: Option<i64>,
     pub(crate) model_slug: Option<String>,
     pub(crate) blocked_model_slug: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "usage_wait::deserialize_null_default")]
     pub(crate) fallback_model_slugs: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "usage_wait::deserialize_null_default")]
     pub(crate) presentation: BannerPresentation,
     request_url: Option<String>,
     #[serde(skip)]

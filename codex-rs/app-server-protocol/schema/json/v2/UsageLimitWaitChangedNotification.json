@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Visible countdown while the core turn waits to retry after a usage-limit reset.",
+  "properties": {
+    "retryAtMs": {
+      "description": "Unix timestamp in milliseconds for the next retry, or `None` when the wait ended.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "threadId"
+  ],
+  "title": "UsageLimitWaitChangedNotification",
+  "type": "object"
+}
