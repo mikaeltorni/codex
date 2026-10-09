@@ -1253,3 +1253,234 @@ async fn usage_wait_requires_explicit_navigation_before_enter_opens_upgrade() {
     }
     println!("None");
 }
+
+/// Capture every supported backend CTA without launching browsers or sending owner requests.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn backend_recovery_actions_require_deliberate_selection() {
+    println!("parameters=none");
+    let cases = [
+        (
+            "add_credits",
+            "https://chatgpt.com/codex/settings/usage?credits_modal=true",
+        ),
+        (
+            "buy_credits",
+            "https://chatgpt.com/codex/settings/usage?credits_modal=true",
+        ),
+        ("buy_reset", "https://chatgpt.com/codex/purchase/reset"),
+        ("view_usage", "https://chatgpt.com/codex/settings/usage"),
+        (
+            "request_increase_usage_settings",
+            "https://chatgpt.com/codex/settings/usage",
+        ),
+        (
+            "view_workspace_usage",
+            "https://chatgpt.com/admin/usage-limits/workspace?account_id=workspace-a",
+        ),
+        (
+            "increase_spend_cap",
+            "https://chatgpt.com/admin/usage-limits/workspace?account_id=workspace-a",
+        ),
+        ("open_plus_pricing_web", "https://chatgpt.com/explore/plus"),
+        ("open_pro_pricing_web", "https://chatgpt.com/explore/pro"),
+        (
+            "open_pricing_dialog",
+            "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing",
+        ),
+        ("request_increase", "usage-owner"),
+        ("notify_owner", "credits-owner"),
+        ("contact_owner", "credits-owner"),
+        ("reset_usage", "reset-picker"),
+    ];
+    let variants = cases.into_iter().map(|(action, destination)| (action, destination, PlanType::Plus, None)).chain([
+        ("add_credits", "https://chatgpt.com/admin/billing?codex_credit_action=add_credits&account_id=workspace-a", PlanType::Team, None),
+        ("buy_credits", "https://chatgpt.com/admin/billing?codex_credit_action=add_credits&account_id=workspace-a", PlanType::Team, None),
+        ("request_increase", "https://example.com/owner-request", PlanType::Team, Some("https://example.com/owner-request")),
+        ("open_pricing_dialog", "https://chatgpt.com/?cta_tab=personal&highlight_plan=plus#pricing", PlanType::Free, None),
+        ("open_pricing_dialog", "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro&pro_variant=2x#pricing", PlanType::ProLite, None),
+    ]);
+    for (action, destination, plan, request_url) in variants {
+        for (running, reserve) in [(false, false), (true, false), (false, true), (true, true)] {
+            let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+            chat.has_chatgpt_account = true;
+            chat.plan_type = Some(plan);
+            let mut response = banner_response(
+                Some("inline"),
+                json!([{"action": action, "label": "Recovery action"}]),
+            );
+            response.rate_limits.plan_type = Some(plan);
+            if let Some(request_url) = request_url {
+                response.rate_limit_upsell.as_mut().unwrap()["request_url"] = json!(request_url);
+            }
+            if reserve {
+                response.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+            }
+            chat.update_backend_banner(&response);
+            let retry_at = chrono::Utc::now().timestamp_millis() + 60_000;
+            if running {
+                chat.bottom_pane.set_task_running(running);
+                chat.update_usage_limit_wait(Some(retry_at));
+                assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+            }
+            assert!(events.try_recv().is_err(), "display emitted {action}");
+            assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Recovery action"));
+            for kind in [
+                crossterm::event::KeyEventKind::Repeat,
+                crossterm::event::KeyEventKind::Release,
+            ] {
+                chat.handle_key_event(KeyEvent::new_with_kind(
+                    KeyCode::Down,
+                    KeyModifiers::NONE,
+                    kind,
+                ));
+                assert!(events.try_recv().is_err());
+                assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Recovery action"));
+                chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                assert!(
+                    events.try_recv().is_err(),
+                    "non-Press navigation armed {action}"
+                );
+                assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Recovery action"));
+            }
+            for _ in 0..3 {
+                chat.update_backend_banner(&response);
+                chat.refresh_usage_limit_wait_for_time_tick();
+                assert!(events.try_recv().is_err(), "poll/tick emitted {action}");
+                chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                assert!(
+                    events.try_recv().is_err(),
+                    "unselected Enter emitted {action}"
+                );
+                assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Recovery action"));
+                assert_eq!(chat.composer_text_with_pending(), "");
+            }
+            if running || reserve {
+                chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+                chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            } else {
+                chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+            }
+            let expected = match destination {
+                "usage-owner" => AppEvent::SendAddCreditsNudgeEmail {
+                    credit_type: AddCreditsNudgeCreditType::UsageLimit,
+                },
+                "credits-owner" => AppEvent::SendAddCreditsNudgeEmail {
+                    credit_type: AddCreditsNudgeCreditType::Credits,
+                },
+                "reset-picker" => AppEvent::OpenRateLimitResetCredits,
+                url => AppEvent::OpenUrlInBrowser {
+                    url: url.to_string(),
+                },
+            };
+            // AppEvent has no PartialEq; compare the complete captured variant and fields.
+            assert_eq!(
+                format!("{:?}", events.try_recv().expect("deliberate action")),
+                format!("{expected:?}")
+            );
+            assert!(events.try_recv().is_err());
+            chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            assert!(
+                events.try_recv().is_err(),
+                "repeated Enter emitted {action}"
+            );
+            if running || !reserve {
+                assert!(render_bottom_popup(&chat, /*width*/ 100).contains("Recovery action"));
+            } else {
+                assert_eq!(chat.composer_text_with_pending(), "");
+            }
+            assert_eq!(
+                chat.usage_limit_wait_retry_at_ms,
+                running.then_some(retry_at)
+            );
+        }
+    }
+    println!("None");
+}
+
+/// Verify locally supplied wait choices share the same protection as backend CTAs.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn local_recovery_actions_require_deliberate_selection() {
+    println!("parameters=none");
+    for (plan, index, label) in [
+        (PlanType::Plus, 0, "Upgrade"),
+        (PlanType::Team, 0, "Request increase"),
+        (PlanType::Pro, 0, "Redeem reset"),
+        (PlanType::Pro, 1, "Switch to Luna Reserve"),
+        (PlanType::Pro, 2, "Keep waiting"),
+    ] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.requires_openai_auth = true;
+        chat.plan_type = Some(plan);
+        let thread_id = ThreadId::new();
+        chat.thread_id = Some(thread_id);
+        let mut models = chat.model_catalog.try_list_models().unwrap();
+        if !models
+            .iter()
+            .any(|model| model.model == crate::model_catalog::LUNA_RESERVE_MODEL)
+        {
+            let mut reserve = models[0].clone();
+            reserve.model = crate::model_catalog::LUNA_RESERVE_MODEL.to_string();
+            reserve.display_name = "Luna Reserve".to_string();
+            models.push(reserve);
+            chat.model_catalog = Arc::new(ModelCatalog::new(models));
+        }
+        let mut response = banner_response(Some("inline"), json!([]));
+        response.rate_limits.plan_type = Some(plan);
+        response.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+        chat.bottom_pane.set_task_running(/*running*/ true);
+        let retry_at = chrono::Utc::now().timestamp_millis() + 60_000;
+        chat.update_usage_limit_wait(Some(retry_at));
+        assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+        chat.update_backend_banner(&response);
+        assert!(render_bottom_popup(&chat, /*width*/ 100).contains(label));
+        assert!(events.try_recv().is_err());
+        for _ in 0..3 {
+            chat.refresh_usage_limit_wait_for_time_tick();
+            chat.update_backend_banner(&response);
+            chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            assert!(
+                events.try_recv().is_err(),
+                "unselected Enter emitted {label}"
+            );
+            assert!(render_bottom_popup(&chat, /*width*/ 100).contains(label));
+            assert_eq!(chat.composer_text_with_pending(), "");
+        }
+        // Up/Down returns to the first row and explicitly arms the current menu.
+        chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        for _ in 0..index {
+            chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let expected = match label {
+            "Upgrade" => AppEvent::OpenUrlInBrowser {
+                url: "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing".to_string(),
+            },
+            "Request increase" => AppEvent::SendAddCreditsNudgeEmail {
+                credit_type: AddCreditsNudgeCreditType::UsageLimit,
+            },
+            "Redeem reset" => AppEvent::OpenRateLimitResetCredits,
+            "Switch to Luna Reserve" => AppEvent::ApplyBackendBannerFallback { thread_id },
+            "Keep waiting" => AppEvent::DismissUsageLimitWaitBanner {
+                thread_id: Some(thread_id),
+            },
+            _ => unreachable!("fixture label"),
+        };
+        assert_eq!(
+            format!("{:?}", events.try_recv().expect("deliberate action")),
+            format!("{expected:?}")
+        );
+        assert!(events.try_recv().is_err());
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(events.try_recv().is_err(), "repeated Enter emitted {label}");
+        assert!(render_bottom_popup(&chat, /*width*/ 100).contains(label));
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at));
+    }
+    println!("None");
+}
