@@ -453,6 +453,8 @@ pub enum Feature {
     /// Removed compatibility flag retained as a no-op now that workspace owner
     /// usage nudges are always enabled.
     WorkspaceOwnerUsageNudge,
+    /// Allow account banners to switch automatically into GPT Reserve.
+    LunaReserveAutoSwitch,
     /// Legacy rollout flag for Responses API WebSocket transport experiments.
     ResponsesWebsockets,
     /// Legacy rollout flag for Responses API WebSocket transport v2 experiments.
@@ -1895,6 +1897,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "workspace_owner_usage_nudge",
         stage: Stage::Removed,
         default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::LunaReserveAutoSwitch,
+        key: "luna_reserve_auto_switch",
+        stage: Stage::Stable,
+        default_enabled: true,
     },
     FeatureSpec {
         id: Feature::ResponsesWebsockets,

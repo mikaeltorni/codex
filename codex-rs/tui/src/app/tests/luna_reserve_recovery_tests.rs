@@ -380,3 +380,79 @@ async fn luna_reserve_recovery_does_not_override_manual_choice_or_account_change
     }
     Ok(())
 }
+
+/// Exercise TOML Reserve opt-out through account reads and settings RPCs.
+/// Parameters: none.
+/// Returns: successful completion or fixture error.
+#[tokio::test]
+async fn luna_reserve_switch_config_controls_settings_rpc() -> Result<()> {
+    println!("parameters=none");
+    for enabled in [false, true] {
+        let (mut app, _events, _ops) = make_test_app_with_channels().await;
+        let (mut server, requests, proxy) =
+            backend_banner_fallback_tests::start_fallback_thread(&mut app).await?;
+        let flags: codex_features::FeaturesToml =
+            toml::from_str(&format!("luna_reserve_auto_switch = {enabled}"))?;
+        let configured = codex_features::Features::from_sources(
+            codex_features::FeatureConfigSource {
+                features: Some(&flags),
+                ..Default::default()
+            },
+            codex_features::FeatureConfigSource::default(),
+            codex_features::FeatureOverrides::default(),
+        );
+        app.config.features =
+            crate::legacy_core::config::ManagedFeatures::from_configured_with_warnings(
+                configured,
+                /*feature_requirements*/ None,
+                &mut Vec::new(),
+            )?;
+        configure_reserve_catalog(&mut app);
+        app.chat_widget
+            .set_reasoning_effort(Some(ReasoningEffortConfig::High));
+        requests.lock().unwrap().clear();
+        app.chat_widget.update_backend_banner(&reserve_response());
+        app.apply_backend_banner_fallback(&mut server).await;
+        assert_eq!(
+            app.chat_widget.current_model(),
+            if enabled { "gpt-reserve" } else { "gpt-5.5" }
+        );
+        assert_eq!(
+            app.chat_widget.current_reasoning_effort(),
+            Some(if enabled {
+                ReasoningEffortConfig::Medium
+            } else {
+                ReasoningEffortConfig::High
+            })
+        );
+        assert_eq!(requests.lock().unwrap().len(), usize::from(enabled));
+        if enabled {
+            // Disabling future entry must still let an already-switched task return normally.
+            app.chat_widget
+                .set_feature_enabled(Feature::LunaReserveAutoSwitch, /*enabled*/ false);
+            let mut recovered = reserve_response();
+            recovered.ordinary_usage_allowed = Some(true);
+            recovered.rate_limit_upsell = None;
+            app.chat_widget.update_backend_banner(&recovered);
+            app.apply_backend_banner_fallback(&mut server).await;
+            assert_eq!(app.chat_widget.current_model(), "gpt-5.5");
+            assert_eq!(requests.lock().unwrap().len(), 2);
+        } else {
+            let cache = app
+                .config
+                .codex_home
+                .join("tui-luna-reserve")
+                .join(format!("{}.json", app.active_thread_id.unwrap()));
+            assert!(!cache.exists());
+            app.chat_widget
+                .update_backend_banner(&backend_banner_fallback_tests::fallback_response());
+            app.apply_backend_banner_fallback(&mut server).await;
+            assert_eq!(app.chat_widget.current_model(), "gpt-5.6-terra");
+            assert_eq!(requests.lock().unwrap().len(), 1);
+        }
+        server.shutdown().await?;
+        proxy.await??;
+    }
+    println!("Ok(())");
+    Ok(())
+}
