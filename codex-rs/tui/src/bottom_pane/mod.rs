@@ -151,6 +151,8 @@ mod shortcut_overlay;
 pub(crate) use picker_style::active_tab_style;
 pub(crate) use picker_style::selection_style;
 pub(crate) mod prompt_args;
+mod selection_activation;
+pub(crate) use selection_activation::SelectionActivation;
 mod selection_picker_layout;
 mod skill_popup;
 mod skills_toggle_view;
