@@ -95,10 +95,19 @@ usage-limit wait keeps its countdown visible while account banners update.
 Dismissing an unrelated notice leaves a hidden account banner available when
 switching back to its model. Reserve recovery and reset actions remain available.
 
+The usage-limit recovery banner requires an explicit choice: use its numbered
+shortcut, or navigate with the list movement keys before pressing Enter. An
+Enter intended for the composer does not open Upgrade. Each activation consumes
+the selection, so repeated Enter presses cannot reopen the upgrade window.
+Countdown ticks and unchanged account updates preserve a deliberate selection.
+
 ### Checking the CX test deployment
 
 On this machine, registered CX accounts share the installed Codex CLI and Code
 Mode host. The `newTest1601` test deployment publishes both binaries together.
+The setup installer's saved branch selection is
+`~/.config/linux_codex_claude_code_setup/codex-fork-ref`; use `newTest1601` to
+retain the 0.160.1 test branch on subsequent installer runs.
 Existing processes keep their loaded binary; start a fresh Codex process to test
 the deployed changes.
 
