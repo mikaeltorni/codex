@@ -341,6 +341,7 @@ pub(crate) use backend_banners::AutomaticModelSwitchReason;
 mod protocol;
 mod protocol_requests;
 mod rate_limits;
+mod usage_limit_wait;
 mod usage_notice;
 use self::rate_limits::RateLimitErrorKind;
 use self::rate_limits::RateLimitSwitchPromptState;
@@ -575,6 +576,10 @@ pub(crate) struct ChatWidget {
     rate_limit_warnings: RateLimitWarningState,
     clock_format: crate::clock_format::ClockFormat,
     usage_notice_state: usage_notice::UsageNoticeState,
+    /// Reset deadline and redraw deadline for the active core usage-limit wait.
+    pub(crate) usage_limit_wait_retry_at_ms: Option<i64>,
+    usage_limit_wait_banner_dismissed: bool,
+    pub(crate) usage_limit_wait_next_tick: Option<Instant>,
     backend_banner_state: backend_banners::BackendBannerState,
     pub(crate) security_setup_request_id: uuid::Uuid,
     security_setup_presented: bool,

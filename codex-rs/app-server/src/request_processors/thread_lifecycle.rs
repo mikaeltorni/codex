@@ -1,6 +1,7 @@
 use super::*;
 use crate::extensions::send_thread_warning;
 use codex_app_server_protocol::ThreadQueueChangedNotification;
+use codex_app_server_protocol::UsageLimitWaitChangedNotification;
 use codex_extension_api::ThreadIdleCause;
 use codex_protocol::config_types::MultiAgentMode;
 
@@ -597,7 +598,7 @@ pub(super) async fn handle_pending_thread_resume_request(
     pending_thread_unloads: &Arc<Mutex<HashSet<ThreadId>>>,
     mut pending: crate::thread_state::PendingThreadResumeRequest,
 ) {
-    let (active_turn_metadata, active_turn) = {
+    let (active_turn_metadata, active_turn, usage_limit_wait_retry_at_ms) = {
         let state = thread_state.lock().await;
         let items_view = if pending.include_turns {
             Some(TurnItemsView::Full)
@@ -609,7 +610,11 @@ pub(super) async fn handle_pending_thread_resume_request(
         };
         let active_turn =
             items_view.and_then(|view| state.active_turn_snapshot_with_items_view(view));
-        (state.active_turn_metadata_snapshot(), active_turn)
+        (
+            state.active_turn_metadata_snapshot(),
+            active_turn,
+            state.turn_summary.usage_limit_wait_retry_at_ms,
+        )
     };
     tracing::debug!(
         thread_id = %conversation_id,
@@ -803,6 +808,17 @@ pub(super) async fn handle_pending_thread_resume_request(
     outgoing
         .send_response_with_thread_originator(request_id, response, originator)
         .await;
+    if let Some(retry_at_ms) = usage_limit_wait_retry_at_ms {
+        outgoing
+            .send_server_notification_to_connections(
+                &[connection_id],
+                ServerNotification::UsageLimitWaitChanged(UsageLimitWaitChangedNotification {
+                    thread_id: conversation_id.to_string(),
+                    retry_at_ms: Some(retry_at_ms),
+                }),
+            )
+            .await;
+    }
     // Warm metadata-only resumes skip history reconstruction. Cold paginated children can
     // replay usage using attribution captured before the listener was attached.
     if let Some(token_usage_turn_id) = token_usage_turn_id {

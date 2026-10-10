@@ -275,6 +275,8 @@ pub(crate) mod turn;
 pub(crate) mod turn_context;
 mod turn_input;
 mod turn_suspension;
+mod usage_limit_wait;
+pub(crate) use usage_limit_wait::UsageLimitWait;
 mod world_state;
 use self::code_mode_warning::unsupported_code_mode_warning;
 pub(crate) use self::environment::ThreadEnvironmentDefaults;

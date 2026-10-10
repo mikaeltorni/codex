@@ -15,6 +15,7 @@ mod realtime;
 mod rollout_history;
 mod startup_launch;
 mod thread_list;
+mod turn_settings;
 mod web_search;
 
 #[cfg(test)]

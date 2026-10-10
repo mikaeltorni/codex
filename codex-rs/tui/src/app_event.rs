@@ -717,6 +717,11 @@ pub(crate) enum AppEvent {
         thread_id: ThreadId,
     },
 
+    /// Hide the auto-resume usage-limit actions while the active turn keeps waiting.
+    DismissUsageLimitWaitBanner {
+        thread_id: Option<ThreadId>,
+    },
+
     /// Open the current thread goal summary/action menu.
     OpenThreadGoalMenu {
         thread_id: ThreadId,

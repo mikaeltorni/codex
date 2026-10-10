@@ -122,6 +122,9 @@ mod agent_spawn;
 mod code_mode_notifications;
 mod environment_selection;
 
+#[path = "step_settings/usage_limit_wait_tests.rs"]
+mod usage_limit_wait;
+
 const MODEL_A: &str = "step-settings-a";
 const MODEL_B: &str = "step-settings-b";
 const MODEL_C: &str = "step-settings-c";

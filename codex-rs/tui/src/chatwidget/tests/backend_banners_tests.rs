@@ -1,5 +1,6 @@
 use super::*;
 use codex_app_server_protocol::GetAccountRateLimitsResponse;
+use codex_app_server_protocol::RateLimitResetCreditsSummary;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -22,6 +23,98 @@ fn banner_response(
         rate_limits: snapshot(/*percent*/ 25.0),
         rate_limits_by_limit_id: None,
         rate_limit_reset_credits: None,
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_shows_available_resets_without_reserve_or_backend_ctas() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Pro);
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+    assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+
+    let mut response = banner_response(/*presentation*/ None, json!([]));
+    response.rate_limit_upsell = None;
+    response.rate_limit_reset_credits = Some(RateLimitResetCreditsSummary {
+        available_count: 2,
+        credits: None,
+    });
+    chat.update_backend_banner(&response);
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    let stable = rendered
+        .lines()
+        .map(|line| {
+            if line.contains("Resuming in ") {
+                "• Resuming in <remaining> • esc to interrupt"
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_resets_without_reserve", stable);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.update_backend_banner(&response);
+    response
+        .rate_limit_reset_credits
+        .as_mut()
+        .unwrap()
+        .available_count = 1;
+    chat.update_backend_banner(&response);
+    assert_eq!(chat.available_rate_limit_reset_credits, Some(1));
+    chat.refresh_usage_limit_wait_for_time_tick();
+    let _ = render_bottom_popup(&chat, /*width*/ 90);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+    );
+
+    response
+        .rate_limit_reset_credits
+        .as_mut()
+        .unwrap()
+        .available_count = 0;
+    chat.update_backend_banner(&response);
+    assert!(!render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+    assert_eq!(chat.available_rate_limit_reset_credits, Some(0));
+}
+
+#[tokio::test]
+async fn usage_wait_does_not_duplicate_a_renderable_backend_reset_action() {
+    for label in ["Use an available reset", ""] {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        let mut response = banner_response(
+            /*presentation*/ None,
+            json!([{"action": "reset_usage", "label": label}]),
+        );
+        response.rate_limit_reset_credits = Some(RateLimitResetCreditsSummary {
+            available_count: 1,
+            credits: None,
+        });
+        chat.update_backend_banner(&response);
+        chat.bottom_pane.set_task_running(true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        let actions = chat.usage_limit_wait_backend_banner().actions;
+        let names = actions
+            .into_iter()
+            .map(|item| item.name)
+            .collect::<Vec<_>>();
+        let expected = if label.is_empty() {
+            "Redeem reset"
+        } else {
+            label
+        };
+        assert_eq!(names, vec![expected.to_string()]);
     }
 }
 
@@ -205,6 +298,35 @@ async fn backend_banner_turn_on_another_model_preserves_hidden_occurrence() {
 }
 
 #[tokio::test]
+async fn unrelated_inline_banner_dismissal_preserves_hidden_account_banner() {
+    for _ in 0..2 {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-b")).await;
+        let response = banner_response(Some("dismissible"), json!([]));
+        chat.update_backend_banner(&response);
+        assert!(
+            !render_bottom_popup(&chat, /*width*/ 70).contains("Selected model usage exhausted")
+        );
+
+        chat.bottom_pane
+            .set_inline_banner(Some(crate::bottom_pane::ActionableBanner {
+                title: "Unrelated notice".into(),
+                ..Default::default()
+            }));
+        assert!(render_bottom_popup(&chat, /*width*/ 70).contains("Unrelated notice"));
+        chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(!render_bottom_popup(&chat, /*width*/ 70).contains("Unrelated notice"));
+        chat.update_backend_banner(&response);
+        chat.set_model("test-model-a");
+        let restored = render_bottom_popup(&chat, /*width*/ 70);
+        assert!(
+            restored.contains("Selected model usage exhausted"),
+            "{restored}"
+        );
+        insta::assert_snapshot!("hidden_account_banner_after_unrelated_dismissal", restored);
+    }
+}
+
+#[tokio::test]
 async fn backend_banner_restores_only_programmatically_displaced_switch_prompt() {
     for user_dismissed in [false, true] {
         let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("gpt-5")).await;
@@ -259,6 +381,520 @@ async fn owner_notification_completion_cannot_cross_account_change() {
 }
 
 #[tokio::test]
+async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    let original = banner_response(Some("inline"), json!([]));
+    chat.update_backend_banner(&original);
+    assert!(render_bottom_popup(&chat, /*width*/ 70).contains("Selected model usage exhausted"));
+
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    let countdown = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(
+        countdown.contains("Usage limit reached (Auto-continue is enabled)"),
+        "{countdown}"
+    );
+    assert!(countdown.contains("Resuming in "), "{countdown}");
+    assert!(
+        !countdown.contains("Auto-continue is enabled. Resuming in"),
+        "{countdown}"
+    );
+    assert!(!countdown.contains("Press Ctrl-C to stop"), "{countdown}");
+
+    let mut updated = original;
+    updated.rate_limit_upsell.as_mut().unwrap()["title"] = json!("Updated account limit");
+    chat.update_backend_banner(&updated);
+    let countdown_after_account_update = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(
+        countdown_after_account_update.contains("Usage limit reached (Auto-continue is enabled)"),
+        "{countdown_after_account_update}"
+    );
+    assert!(
+        countdown_after_account_update.contains("Resuming in "),
+        "{countdown_after_account_update}"
+    );
+    assert!(
+        !countdown_after_account_update.contains("Press Ctrl-C to stop"),
+        "{countdown_after_account_update}"
+    );
+    assert!(!countdown_after_account_update.contains("Updated account limit"));
+
+    chat.update_usage_limit_wait(None);
+    chat.bottom_pane.set_task_running(false);
+    let restored = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(restored.contains("Updated account limit"), "{restored}");
+    assert!(!restored.contains("Auto-continue is enabled"));
+}
+
+#[tokio::test]
+/// Verify recovery actions remain usable during an active quota wait.
+/// Parameters: none.
+/// Returns: None.
+async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.requires_openai_auth = true;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+
+    let mut models = chat.model_catalog.try_list_models().unwrap();
+    if !models
+        .iter()
+        .any(|model| model.model == crate::model_catalog::LUNA_RESERVE_MODEL)
+    {
+        let mut reserve = models[0].clone();
+        reserve.model = crate::model_catalog::LUNA_RESERVE_MODEL.to_string();
+        reserve.display_name = "Luna Reserve".to_string();
+        models.push(reserve);
+        chat.model_catalog = Arc::new(ModelCatalog::new(models));
+    }
+
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits {
+            origin: crate::app_event::RateLimitRefreshOrigin::Recovery
+        })
+    ));
+    let mut response: GetAccountRateLimitsResponse = serde_json::from_value(json!({
+        "accountId": "account-preview", "rateLimits": {},
+        "rateLimitUpsell": {
+            "banner_type": "luna_reserve", "presentation": "inline",
+            "title": "Usage limit reached",
+            "description": "Add credits or upgrade to continue.",
+            "ctas": [
+                {"action": "add_credits", "label": "Add credits"},
+                {"action": "open_pricing_dialog", "label": "Upgrade"}
+            ]
+        }
+    }))
+    .unwrap();
+    response.rate_limits.plan_type = Some(PlanType::Plus);
+    chat.update_backend_banner(&response);
+    chat.on_rate_limit_snapshot(Some(response.rate_limits));
+    chat.refresh_usage_limit_wait_for_time_tick();
+
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    for action in [
+        "Personal usage limit reached (Auto-continue is enabled)",
+        "Upgrade your subscription to continue sooner, or wait for your",
+        "usage limit to reset.",
+        "Your turn will resume automatically.",
+        "Add credits",
+        "Upgrade",
+        "Redeem reset",
+        "Switch to Luna Reserve",
+        "Keep waiting",
+        "Resuming in ",
+    ] {
+        assert!(
+            rendered.contains(action),
+            "missing {action:?} in:\n{rendered}"
+        );
+    }
+    let snapshot = rendered
+        .lines()
+        .filter(|line| !line.contains("Resuming in"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_account_recovery_choices", snapshot);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::OpenUrlInBrowser { url })
+            if url == "https://chatgpt.com/settings/usage?credits_modal=true"
+    ));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::OpenUrlInBrowser { url })
+            if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing"
+    ));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::ApplyBackendBannerFallback { thread_id: event_thread_id })
+            if event_thread_id == thread_id
+    ));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner {
+            thread_id: Some(event_thread_id)
+        }) if event_thread_id == thread_id
+    ));
+
+    chat.dismiss_usage_limit_wait_banner();
+    let waiting = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
+    assert!(waiting.contains("Resuming in "), "{waiting}");
+}
+
+#[tokio::test]
+async fn usage_wait_plus_upgrade_is_available_without_visible_account_banner() {
+    for dismissed in [false, true] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(PlanType::Plus);
+        if dismissed {
+            let mut response = banner_response(
+                Some("dismissible"),
+                json!([
+                    {"action": "add_credits", "label": "Add credits"},
+                    {"action": "open_pricing_dialog", "label": "Upgrade"}
+                ]),
+            );
+            response.rate_limits.plan_type = Some(PlanType::Plus);
+            chat.update_backend_banner(&response);
+            assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Upgrade"));
+            chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            chat.sync_backend_banner_view();
+            assert!(!chat.has_applicable_backend_banner());
+        }
+
+        chat.bottom_pane.set_task_running(true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::RefreshRateLimits { .. })
+        ));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        for expected in [
+            "Upgrade your subscription to continue sooner, or wait for your",
+            "usage limit to reset.",
+            "Your turn will resume automatically.",
+            "Upgrade",
+            "Keep waiting",
+            "Resuming in ",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?}: {rendered}"
+            );
+        }
+        let lines = rendered.lines().collect::<Vec<_>>();
+        let hint_row = lines
+            .iter()
+            .position(|line| line.contains("Press a number to choose"))
+            .expect("wait menu hint");
+        assert!(lines[hint_row + 1].trim().is_empty(), "{rendered}");
+        assert!(lines[hint_row + 2].contains("Resuming in "), "{rendered}");
+        if dismissed {
+            assert!(rendered.contains("Add credits"), "{rendered}");
+        }
+        let upgrade_choice = if dismissed { '2' } else { '1' };
+        chat.handle_key_event(KeyEvent::new(
+            KeyCode::Char(upgrade_choice),
+            KeyModifiers::NONE,
+        ));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::OpenUrlInBrowser { url })
+                if url == "https://chatgpt.com/?cta_tab=personal&highlight_plan=pro#pricing"
+        ));
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
+        if !dismissed {
+            let stable = rendered
+                .lines()
+                .map(|line| {
+                    if line.contains("Resuming in ") {
+                        "• Resuming in <remaining> • esc to interrupt"
+                    } else {
+                        line
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            insta::assert_snapshot!("usage_wait_plus_upgrade_without_account_banner", stable);
+        }
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_countdown_tick_preserves_selected_recovery_action() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Team);
+    let mut response = banner_response(
+        /*presentation*/ None,
+        json!([{"action": "request_increase", "label": "Request increase"}]),
+    );
+    response.rate_limits.plan_type = Some(PlanType::Team);
+    chat.update_backend_banner(&response);
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits { .. })
+    ));
+    let _ = render_bottom_popup(&chat, /*width*/ 90);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    chat.refresh_usage_limit_wait_for_time_tick();
+    // An unchanged account poll must also leave the selected action in place.
+    chat.update_backend_banner(&response);
+    chat.on_rate_limit_snapshot(Some(response.rate_limits));
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    let stable = rendered
+        .lines()
+        .filter(|line| !line.contains("Resuming in"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_preserves_selected_action", stable);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    // A redraw must not move selection back to the request-increase action.
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+    ));
+    assert!(events.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn usage_wait_identifies_personal_and_workspace_accounts() {
+    for (plan, title, action, snapshot) in [
+        (
+            PlanType::Plus,
+            "Personal usage limit reached",
+            Some("Upgrade"),
+            "usage_wait_personal_plus",
+        ),
+        (
+            PlanType::Pro,
+            "Personal usage limit reached",
+            None,
+            "usage_wait_personal_pro",
+        ),
+        (
+            PlanType::ProMax,
+            "Personal usage limit reached",
+            None,
+            "usage_wait_personal_pro",
+        ),
+        (
+            PlanType::Team,
+            "Workspace usage limit reached",
+            Some("Request increase"),
+            "usage_wait_workspace",
+        ),
+        (
+            PlanType::Unknown,
+            "Usage limit reached",
+            None,
+            "usage_wait_unknown_plan",
+        ),
+    ] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(plan);
+        chat.bottom_pane.set_task_running(/*running*/ true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::RefreshRateLimits { .. })
+        ));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert!(rendered.contains(title), "{rendered}");
+        if let Some(action) = action {
+            assert!(rendered.contains(action), "{rendered}");
+        }
+        let stable = rendered
+            .lines()
+            .map(|line| {
+                if line.contains("Resuming in ") {
+                    "• Resuming in <remaining> • esc to interrupt"
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!(snapshot, stable);
+        // Unknown availability uses the same explicit check as /usage on every plan.
+        assert!(rendered.contains("Redeem reset"), "{rendered}");
+        let reset_choice = if action.is_some() { '2' } else { '1' };
+        chat.handle_key_event(KeyEvent::new(
+            KeyCode::Char(reset_choice),
+            KeyModifiers::NONE,
+        ));
+        assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+        // Only select the passive action; a rendered recovery offer never sends a request.
+        let choice = if action.is_some() { '3' } else { '2' };
+        chat.handle_key_event(KeyEvent::new(KeyCode::Char(choice), KeyModifiers::NONE));
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+        ));
+        assert!(events.try_recv().is_err());
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_team_request_is_available_without_account_banner() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Team);
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits { .. })
+    ));
+
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    for expected in ["Request increase", "Keep waiting", "Resuming in "] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}: {rendered}"
+        );
+    }
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::SendAddCreditsNudgeEmail {
+            credit_type: AddCreditsNudgeCreditType::UsageLimit,
+        })
+    ));
+}
+
+#[tokio::test]
+async fn usage_wait_uses_team_recovery_with_nullable_account_banner() {
+    let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.bottom_pane.set_task_running(true);
+    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+    chat.update_usage_limit_wait(Some(retry_at_ms));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::RefreshRateLimits { .. })
+    ));
+
+    let mut response = banner_response(
+        /*presentation*/ None,
+        json!([{"action": "notify_owner", "label": "Request credits"}]),
+    );
+    response.rate_limits.plan_type = Some(PlanType::Team);
+    response.rate_limits.rate_limit_reached_type =
+        Some(RateLimitReachedType::WorkspaceMemberCreditsDepleted);
+    let upsell = response.rate_limit_upsell.as_mut().unwrap();
+    upsell["banner_type"] = json!("workspace_member_credits_depleted");
+    upsell["model_slug"] = serde_json::Value::Null;
+    upsell["presentation"] = serde_json::Value::Null;
+    upsell["fallback_model_slugs"] = serde_json::Value::Null;
+    chat.update_backend_banner(&response);
+    chat.on_rate_limit_snapshot(Some(response.rate_limits));
+    chat.refresh_usage_limit_wait_for_time_tick();
+    let initial_tick = chat.usage_limit_wait_next_tick.unwrap();
+
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(rendered.contains("Request increase"), "{rendered}");
+    assert!(rendered.contains("Keep waiting"), "{rendered}");
+    assert!(rendered.contains("Resuming in "), "{rendered}");
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::SendAddCreditsNudgeEmail {
+            credit_type: AddCreditsNudgeCreditType::UsageLimit
+        })
+    ));
+    let stable = rendered
+        .lines()
+        .filter(|line| !line.contains("Resuming in"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("usage_wait_team_recovery_choices", stable);
+
+    chat.refresh_usage_limit_wait_for_time_tick();
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    assert!(chat.usage_limit_wait_next_tick.unwrap() > initial_tick);
+    let after_request = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(
+        after_request.contains("Request increase"),
+        "{after_request}"
+    );
+    assert!(after_request.contains("Resuming in "), "{after_request}");
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+    assert!(matches!(
+        events.try_recv(),
+        Ok(AppEvent::DismissUsageLimitWaitBanner { .. })
+    ));
+    chat.dismiss_usage_limit_wait_banner();
+    chat.refresh_usage_limit_wait_for_time_tick();
+    let after_dismissal = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(
+        !after_dismissal.contains("Keep waiting"),
+        "{after_dismissal}"
+    );
+    assert!(
+        after_dismissal.contains("Resuming in "),
+        "{after_dismissal}"
+    );
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+}
+
+#[tokio::test]
+async fn hiding_usage_wait_actions_keeps_reset_countdown_running() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.bottom_pane.set_task_running(true);
+    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+    chat.update_usage_limit_wait(Some(retry_at_ms));
+    let initial_tick = chat
+        .usage_limit_wait_next_tick
+        .expect("active wait should schedule a countdown refresh");
+
+    chat.dismiss_usage_limit_wait_banner();
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    assert_eq!(chat.usage_limit_wait_next_tick, Some(initial_tick));
+    let waiting = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
+    assert!(waiting.contains("Resuming in "), "{waiting}");
+
+    chat.refresh_usage_limit_wait_for_time_tick();
+    assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+    assert!(
+        chat.usage_limit_wait_next_tick
+            .is_some_and(|next_tick| next_tick > initial_tick)
+    );
+    let waiting_after_tick = render_bottom_popup(&chat, /*width*/ 70);
+    assert!(
+        !waiting_after_tick.contains("Auto-continue is enabled"),
+        "{waiting_after_tick}"
+    );
+    assert!(
+        waiting_after_tick.contains("Resuming in "),
+        "{waiting_after_tick}"
+    );
+}
+
+#[tokio::test]
+async fn usage_wait_resumption_restarts_working_elapsed_time() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.bottom_pane.set_task_running(true);
+    chat.bottom_pane
+        .reset_status_timer(Duration::from_secs(/*secs*/ 15 * 60));
+    let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+
+    chat.update_usage_limit_wait(Some(retry_at_ms));
+    assert!(chat.bottom_pane.status_elapsed().unwrap() >= Duration::from_secs(15 * 60));
+    assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
+
+    chat.update_usage_limit_wait(None);
+    assert!(chat.bottom_pane.status_elapsed().unwrap() < Duration::from_secs(2));
+    let resumed = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(resumed.contains("Working (0s"), "{resumed}");
+    assert!(!resumed.contains("Resuming in "), "{resumed}");
+
+    // Turn completion also clears wait state; it must not restart an already resumed clock.
+    chat.bottom_pane
+        .reset_status_timer(Duration::from_secs(/*secs*/ 10));
+    chat.update_usage_limit_wait(None);
+    assert!(chat.bottom_pane.status_elapsed().unwrap() >= Duration::from_secs(10));
+}
+
+#[tokio::test]
 async fn backend_banner_new_turn_dismisses_only_shown_dismissible_content() {
     for (presentation, show_before_submit) in [
         (None, true),
@@ -293,7 +929,6 @@ async fn backend_banner_invalid_content_and_absence_restore_fallback() {
     for replacement in [
         serde_json::Value::Null,
         json!({"presentation":"future_mode"}),
-        json!({"presentation":null}),
         json!({"title":" "}),
     ] {
         let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
@@ -435,6 +1070,96 @@ async fn backend_banner_changed_remedy_keeps_fallback_until_applicable_replaceme
                 .contains("Request a limit increase from your owner")
         );
     }
+}
+
+#[tokio::test]
+async fn usage_wait_omits_resets_for_empty_balances_and_non_chatgpt_accounts() {
+    for (has_chatgpt_account, available_count) in [(true, Some(0)), (false, None), (false, Some(2))]
+    {
+        let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+        chat.has_chatgpt_account = has_chatgpt_account;
+        chat.available_rate_limit_reset_credits = available_count;
+        chat.plan_type = Some(PlanType::Team);
+        chat.bottom_pane.set_task_running(true);
+        chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert!(!rendered.contains("Redeem reset"), "{rendered}");
+        assert!(rendered.contains("Keep waiting"), "{rendered}");
+        assert!(rendered.contains("Resuming in "), "{rendered}");
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_replaces_reserve_notice_but_preserves_reset_picker() {
+    for open_reset_picker in [false, true] {
+        let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("gpt-reserve")).await;
+        chat.has_chatgpt_account = true;
+        chat.plan_type = Some(PlanType::Pro);
+        let response = serde_json::from_value(json!({
+            "accountId": "account-preview", "rateLimits": {},
+            "rateLimitUpsell": {
+                "banner_type": "luna_reserve", "presentation": "dismissible",
+                "title": "You are now using Luna Reserve",
+                "description": "Use a reset to continue with the most advanced models.",
+                "ctas": [{"action": "reset_usage", "label": "Reset usage"}]
+            }
+        }))
+        .unwrap();
+        chat.update_backend_banner(&response);
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Continue with Luna Reserve"));
+        if open_reset_picker {
+            chat.handle_key_event(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+            assert_matches!(events.try_recv(), Ok(AppEvent::OpenRateLimitResetCredits));
+            chat.show_rate_limit_reset_loading_popup();
+        }
+
+        chat.bottom_pane.set_task_running(true);
+        let retry_at_ms = chrono::Utc::now().timestamp_millis() + 60_000;
+        chat.update_usage_limit_wait(Some(retry_at_ms));
+        assert_matches!(events.try_recv(), Ok(AppEvent::RefreshRateLimits { .. }));
+        // A periodic reply must not reopen the Reserve picker over an active countdown.
+        chat.update_backend_banner(&response);
+        let rendered = render_bottom_popup(&chat, /*width*/ 90);
+        assert_eq!(chat.usage_limit_wait_retry_at_ms, Some(retry_at_ms));
+        assert!(
+            !rendered.contains("Continue with Luna Reserve"),
+            "{rendered}"
+        );
+        if open_reset_picker {
+            assert!(
+                rendered.contains("Checking your available resets..."),
+                "{rendered}"
+            );
+            chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        } else {
+            assert!(rendered.contains("Reset usage"), "{rendered}");
+            assert!(rendered.contains("Auto-continue is enabled"), "{rendered}");
+        }
+        assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Resuming in "));
+    }
+}
+
+#[tokio::test]
+async fn usage_wait_removes_unknown_reset_offer_when_account_read_confirms_empty_balance() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::Team);
+    chat.bottom_pane.set_task_running(true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    assert!(render_bottom_popup(&chat, /*width*/ 90).contains("Redeem reset"));
+
+    let mut response = banner_response(/*presentation*/ None, json!([]));
+    response.rate_limit_upsell = None;
+    response.rate_limit_reset_credits = Some(RateLimitResetCreditsSummary {
+        available_count: 0,
+        credits: None,
+    });
+    chat.update_backend_banner(&response);
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(!rendered.contains("Redeem reset"), "{rendered}");
+    assert!(rendered.contains("Request increase"), "{rendered}");
+    assert!(rendered.contains("Keep waiting"), "{rendered}");
+    assert!(rendered.contains("Resuming in "), "{rendered}");
 }
 
 /// Keep explicit model selection available when automatic Reserve switching is disabled.
