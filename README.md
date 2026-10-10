@@ -98,6 +98,12 @@ session and usage limits, and `/usage` opens usage and reset actions. An active
 usage-limit wait keeps its countdown visible while account banners update.
 Dismissing an unrelated notice leaves a hidden account banner available when
 switching back to its model. Reserve recovery and reset actions remain available.
+Account notices keep the composer visible while an ordinary model is selected;
+press a displayed action number with an empty composer to choose Upgrade or
+another recovery action. Enter remains composer input, including for `/status`
+and `/usage`. The focused Reserve recovery picker appears only while Reserve
+is the selected model.
+
 
 ### Checking the local deployment
 

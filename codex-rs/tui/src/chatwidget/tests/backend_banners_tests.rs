@@ -426,11 +426,12 @@ async fn usage_wait_countdown_stays_visible_and_restores_updated_account_banner(
     assert!(!restored.contains("Auto-continue is enabled"));
 }
 
-#[tokio::test]
-/// Verify recovery actions remain usable during an active quota wait.
+/// Preserve account recovery choices and current credits routing during usage wait.
 /// Parameters: none.
 /// Returns: None.
+#[tokio::test]
 async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
+    println!("parameters=none");
     let (mut chat, mut events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
     chat.has_chatgpt_account = true;
     chat.requires_openai_auth = true;
@@ -530,6 +531,7 @@ async fn usage_wait_banner_exposes_account_recovery_choices_while_task_runs() {
     let waiting = render_bottom_popup(&chat, /*width*/ 90);
     assert!(!waiting.contains("Auto-continue is enabled"), "{waiting}");
     assert!(waiting.contains("Resuming in "), "{waiting}");
+    println!("None");
 }
 
 #[tokio::test]
@@ -1160,6 +1162,28 @@ async fn usage_wait_removes_unknown_reset_offer_when_account_read_confirms_empty
     assert!(rendered.contains("Request increase"), "{rendered}");
     assert!(rendered.contains("Keep waiting"), "{rendered}");
     assert!(rendered.contains("Resuming in "), "{rendered}");
+}
+
+/// Preserve reset recovery without an upgrade action for the new ProMax plan.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn usage_wait_pro_max_retains_reset_without_upgrade() {
+    println!("parameters=none");
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    chat.has_chatgpt_account = true;
+    chat.plan_type = Some(PlanType::ProMax);
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.update_usage_limit_wait(Some(chrono::Utc::now().timestamp_millis() + 60_000));
+    let rendered = render_bottom_popup(&chat, /*width*/ 90);
+    assert!(
+        rendered.contains("Personal usage limit reached"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("Redeem reset"), "{rendered}");
+    assert!(!rendered.contains("Upgrade"), "{rendered}");
+    assert!(!rendered.contains("Request increase"), "{rendered}");
+    println!("None");
 }
 
 /// Keep explicit model selection available when automatic Reserve switching is disabled.

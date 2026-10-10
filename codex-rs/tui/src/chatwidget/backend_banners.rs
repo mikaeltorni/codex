@@ -407,8 +407,16 @@ impl ChatWidget {
             .load(Ordering::Relaxed);
     }
 
+    /// Present an applicable account notice without stealing ordinary-model composer input.
+    /// Parameters: self - the widget whose account notice and selected model are being synchronized.
+    /// Returns: None.
     pub(super) fn refresh_backend_banner_visibility(&mut self) {
+        // Test-only traces keep production stdout owned by the terminal renderer.
+        #[cfg(test)]
+        println!("self={self:p}");
         if self.usage_limit_wait_retry_at_ms.is_some() {
+            #[cfg(test)]
+            println!("None");
             return;
         }
         let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
@@ -437,9 +445,14 @@ impl ChatWidget {
             !self.backend_banner_state.dismissed && matches_selected_model
         });
         if banner == self.backend_banner_state.presented.as_ref() {
+            #[cfg(test)]
+            println!("None");
             return;
         }
-        let is_reserve = banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
+        // An asynchronous account refresh must not turn a composer's Enter into Upgrade.
+        // The focused Reserve recovery picker applies only after Reserve is actually selected.
+        let is_reserve = self.current_model() == LUNA_RESERVE_MODEL
+            && banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
         let content = banner.map(|banner| {
             let mut content = banner.actionable_banner(self.clock_format);
             if banner.banner_type == LUNA_RESERVE_BANNER
@@ -510,6 +523,8 @@ impl ChatWidget {
         {
             self.maybe_show_pending_rate_limit_prompt();
         }
+        #[cfg(test)]
+        println!("None");
     }
 
     pub(super) fn sync_backend_banner_view(&mut self) {
