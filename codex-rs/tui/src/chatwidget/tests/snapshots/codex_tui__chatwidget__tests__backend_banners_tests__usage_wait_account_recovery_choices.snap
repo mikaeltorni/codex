@@ -1,0 +1,21 @@
+---
+source: tui/src/chatwidget/tests/backend_banners_tests.rs
+expression: snapshot
+---
+  Personal usage limit reached (Auto-continue is enabled)
+  Upgrade your subscription to continue sooner, or wait for your usage limit to reset.
+  Your turn will resume automatically.
+
+› 1. Add credits
+  2. Upgrade
+  3. Redeem reset
+  4. Switch to Luna Reserve
+  5. Keep waiting
+
+  Press a number to choose · ↑ to move up · ↓ to move down · enter to select
+
+
+
+› Ask Codex to do anything
+
+  test-model-a default · /tmp/project

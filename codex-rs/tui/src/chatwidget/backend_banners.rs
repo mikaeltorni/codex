@@ -311,6 +311,7 @@ impl ChatWidget {
 
     pub(crate) fn update_backend_banner(&mut self, response: &GetAccountRateLimitsResponse) {
         self.observe_backend_banner_view();
+        let reset_availability_changed = self.record_rate_limit_reset_availability(response);
         self.backend_banner_state.account_id = response.account_id.clone();
         // Only a full, identity-validated backend read can authorize recovery. Unknown banners
         // still block it; percentages, sparse notifications and reset timestamps cannot prove it.
@@ -351,6 +352,7 @@ impl ChatWidget {
                         == new.blocked_model_slug.as_ref().or(new.model_slug.as_ref())
                     && old.fallback_model_slugs == new.fallback_model_slugs
             });
+        let banner_changed = self.backend_banner_state.banner != banner;
         self.backend_banner_state.banner = banner;
         if !same_occurrence {
             self.backend_banner_state.shown = false;
@@ -361,7 +363,7 @@ impl ChatWidget {
         if self.waiting_for_luna_reserve() {
             self.hold_rate_limit_recovery();
         }
-        self.refresh_backend_banner_visibility();
+        self.refresh_after_backend_banner_update(banner_changed || reset_availability_changed);
     }
 
     fn reserve_notice_already_shown(&self) -> bool {
@@ -376,6 +378,9 @@ impl ChatWidget {
     }
 
     fn observe_backend_banner_view(&mut self) {
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            return;
+        }
         if self.backend_banner_state.presented.is_some() {
             let (shown, dismissed) = self.bottom_pane.inline_banner_lifecycle();
             self.backend_banner_state.shown |= shown;
@@ -387,7 +392,18 @@ impl ChatWidget {
             .load(Ordering::Relaxed);
     }
 
+    /// Present an applicable account notice without stealing ordinary-model composer input.
+    /// Parameters: self - the widget whose account notice and selected model are being synchronized.
+    /// Returns: None.
     pub(super) fn refresh_backend_banner_visibility(&mut self) {
+        // Test-only traces keep production stdout owned by the terminal renderer.
+        #[cfg(test)]
+        println!("self={self:p}");
+        if self.usage_limit_wait_retry_at_ms.is_some() {
+            #[cfg(test)]
+            println!("None");
+            return;
+        }
         let banner = self.backend_banner_state.banner.as_ref().filter(|banner| {
             // Keep recovery actions available while switching, including on older servers
             // without settings/update. The copy below describes the accepted model only.
@@ -414,9 +430,14 @@ impl ChatWidget {
             !self.backend_banner_state.dismissed && matches_selected_model
         });
         if banner == self.backend_banner_state.presented.as_ref() {
+            #[cfg(test)]
+            println!("None");
             return;
         }
-        let is_reserve = banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
+        // An asynchronous account refresh must not turn a composer's Enter into Upgrade.
+        // The focused Reserve recovery picker applies only after Reserve is actually selected.
+        let is_reserve = self.current_model() == LUNA_RESERVE_MODEL
+            && banner.is_some_and(|banner| banner.banner_type == LUNA_RESERVE_BANNER);
         let content = banner.map(|banner| {
             let mut content = banner.actionable_banner(self.clock_format);
             if banner.banner_type == LUNA_RESERVE_BANNER
@@ -487,6 +508,8 @@ impl ChatWidget {
         {
             self.maybe_show_pending_rate_limit_prompt();
         }
+        #[cfg(test)]
+        println!("None");
     }
 
     pub(super) fn sync_backend_banner_view(&mut self) {
@@ -521,3 +544,6 @@ impl ChatWidget {
         self.bottom_pane.set_inline_banner(/*banner*/ None);
     }
 }
+
+#[path = "backend_banners_usage_wait.rs"]
+mod usage_wait;

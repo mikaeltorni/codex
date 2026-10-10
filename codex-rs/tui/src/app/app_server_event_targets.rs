@@ -186,6 +186,9 @@ pub(super) fn server_notification_thread_target(
             Some(notification.thread_id.as_str())
         }
         ServerNotification::Warning(notification) => notification.thread_id.as_deref(),
+        ServerNotification::UsageLimitWaitChanged(notification) => {
+            Some(notification.thread_id.as_str())
+        }
         ServerNotification::GuardianWarning(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::McpServerOauthLoginCompleted(notification) => {
             match notification.thread_id.as_deref() {

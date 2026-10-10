@@ -1,0 +1,5 @@
+---
+source: tui/src/status_indicator_widget.rs
+expression: terminal.backend()
+---
+"Resuming in 1h 12m 31s • esc to interrupt                                       "

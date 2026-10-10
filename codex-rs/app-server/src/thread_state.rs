@@ -92,6 +92,7 @@ pub(crate) enum ThreadListenerCommand {
 #[derive(Default, Clone)]
 pub(crate) struct TurnSummary {
     pub(crate) started_at: Option<i64>,
+    pub(crate) usage_limit_wait_retry_at_ms: Option<i64>,
     pub(crate) command_execution_started: HashSet<String>,
     pub(crate) last_error: Option<TurnError>,
     pub(crate) last_agent_message: Option<ThreadItem>,
@@ -198,6 +199,17 @@ impl ThreadState {
     pub(crate) fn track_current_turn_event(&mut self, event_turn_id: &str, event: &EventMsg) {
         if let EventMsg::TurnStarted(payload) = event {
             self.turn_summary.started_at = payload.started_at;
+        }
+        if let EventMsg::UsageLimitWaitStarted(payload) = event {
+            self.turn_summary.usage_limit_wait_retry_at_ms = Some(payload.retry_at_ms);
+        } else if matches!(
+            event,
+            EventMsg::UsageLimitWaitEnded
+                | EventMsg::TurnStarted(_)
+                | EventMsg::TurnComplete(_)
+                | EventMsg::TurnAborted(_)
+        ) {
+            self.turn_summary.usage_limit_wait_retry_at_ms = None;
         }
         if let EventMsg::ItemCompleted(payload) = event
             && let CoreTurnItem::AgentMessage(item) = &payload.item

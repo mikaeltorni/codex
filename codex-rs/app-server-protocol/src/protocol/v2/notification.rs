@@ -35,6 +35,17 @@ pub struct WarningNotification {
     pub message: String,
 }
 
+/// Visible countdown while the core turn waits to retry after a usage-limit reset.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct UsageLimitWaitChangedNotification {
+    pub thread_id: String,
+    /// Unix timestamp in milliseconds for the next retry, or `None` when the wait ended.
+    #[ts(type = "number | null")]
+    pub retry_at_ms: Option<i64>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
