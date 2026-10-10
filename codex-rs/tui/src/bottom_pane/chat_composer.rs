@@ -31,6 +31,9 @@
 //!
 //! Plain Left opens agents when the local-daemon composer is empty and available for input.
 //! Explicit editor remaps take precedence.
+//! The native goal-prefix shortcut toggles a leading `/goal` without submitting; it preserves
+//! draft elements and flushes buffered typing first. Removal consumes one whitespace separator
+//! while retaining additional draft whitespace and rebasing the cursor and element offsets.
 //! Most key handling goes through [`ChatComposer::handle_key_event`], which dispatches to a
 //! popup-specific handler if a popup is visible and otherwise to
 //! [`ChatComposer::handle_key_event_without_popup`]. After every handled key, we call
@@ -374,6 +377,7 @@ mod completion_target;
 mod composer_layout;
 mod draft_state;
 mod footer_state;
+mod goal_shortcuts;
 mod history_search;
 mod inline_input;
 mod mouse;
@@ -640,6 +644,7 @@ pub(crate) struct ChatComposer {
     history_search: Option<HistorySearchSession>,
     vim_history: VimHistory,
     submit_keys: Vec<KeyBinding>,
+    prepend_goal_keys: Vec<KeyBinding>,
     queue_keys: Vec<KeyBinding>,
     toggle_shortcuts_keys: Vec<KeyBinding>,
     history_search_previous_keys: Vec<KeyBinding>,
@@ -711,6 +716,9 @@ impl ChatComposer {
     ///
     /// This enables reuse in contexts like request-user-input where we want
     /// the same visuals and editing behavior without slash commands or popups.
+    /// Parameters: has_input_focus - focus; app_event_tx - event sender; enhanced_keys_supported -
+    /// terminal support; placeholder_text - empty draft hint; disable_paste_burst - paste detection;
+    /// config - editor behavior. Returns: an initialized composer.
     pub(crate) fn new_with_config(
         has_input_focus: bool,
         app_event_tx: AppEventSender,
@@ -812,6 +820,7 @@ impl ChatComposer {
             history_search: None,
             vim_history: VimHistory::default(),
             submit_keys: vec![key_hint::plain(KeyCode::Enter)],
+            prepend_goal_keys: default_keymap.composer.prepend_goal.clone(),
             queue_keys: vec![key_hint::plain(KeyCode::Tab)],
             toggle_shortcuts_keys: vec![
                 key_hint::plain(KeyCode::Char('?')),
@@ -1028,8 +1037,10 @@ impl ChatComposer {
     /// check them before generic textarea editing. The embedded textarea receives
     /// the same snapshot's editor bindings so a live remap cannot leave submit
     /// keys updated while cursor/editing keys still use old defaults.
+    /// Parameters: self - composer; keymap - resolved bindings. Returns: None.
     pub(crate) fn set_keymap_bindings(&mut self, keymap: &RuntimeKeymap) {
         self.submit_keys = keymap.composer.submit.clone();
+        self.prepend_goal_keys = keymap.composer.prepend_goal.clone();
         self.queue_keys = keymap.composer.queue.clone();
         self.toggle_shortcuts_keys = keymap.composer.toggle_shortcuts.clone();
         self.history_search_previous_keys = keymap.composer.history_search_previous.clone();
@@ -1935,6 +1946,8 @@ impl ChatComposer {
         result
     }
 
+    /// Route native composer actions before popup-specific editing.
+    /// Parameters: self - composer; key_event - pressed key. Returns: input action and redraw flag.
     fn handle_key_event_inner(&mut self, key_event: KeyEvent) -> (InputResult, bool) {
         if self.history_search.is_none()
             && !self.popups.active()
@@ -1945,6 +1958,15 @@ impl ChatComposer {
 
         if self.history_search.is_some() {
             return self.handle_history_search_key(key_event);
+        }
+
+        if self.goal_command_enabled
+            && self.slash_commands_enabled()
+            && !self.blocks_direct_input
+            && self.prepend_goal_keys.is_pressed(key_event)
+        {
+            self.prepend_goal();
+            return (InputResult::None, true);
         }
 
         if self.handle_vim_history_key(key_event) {
@@ -4983,6 +5005,10 @@ mod snapshot_tests;
 #[cfg(test)]
 #[path = "chat_composer/mentions_layout_tests.rs"]
 mod mentions_layout_tests;
+
+#[cfg(test)]
+#[path = "chat_composer/goal_shortcut_tests.rs"]
+mod goal_shortcut_tests;
 
 #[cfg(test)]
 mod tests {

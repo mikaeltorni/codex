@@ -2,6 +2,7 @@
 
 use codex_app_server_protocol::ThreadGoal as AppThreadGoal;
 use codex_app_server_protocol::ThreadGoalStatus as AppThreadGoalStatus;
+use codex_protocol::ThreadId;
 use std::time::Instant;
 
 use crate::bottom_pane::GoalStatusIndicator;
@@ -21,6 +22,18 @@ impl GoalStatusState {
 
     pub(super) fn is_active(&self) -> bool {
         self.goal.status == AppThreadGoalStatus::Active
+    }
+
+    /// Check that a stopped goal belongs to the displayed thread and can resume.
+    /// Parameters: self - observed goal; thread_id - displayed thread. Returns: eligibility.
+    pub(super) fn can_resume(&self, thread_id: ThreadId) -> bool {
+        self.goal.thread_id == thread_id.to_string()
+            && matches!(
+                self.goal.status,
+                AppThreadGoalStatus::Paused
+                    | AppThreadGoalStatus::Blocked
+                    | AppThreadGoalStatus::UsageLimited
+            )
     }
 
     pub(super) fn indicator(

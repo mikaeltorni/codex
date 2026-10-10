@@ -4636,6 +4636,7 @@
               "next_permission_mode": null,
               "previous_permission_mode": null,
               "prompt_stack_back": null,
+              "resume_goal": null,
               "skip_question": null,
               "toggle_voice": null,
               "toggle_voice_mute": null
@@ -4643,6 +4644,7 @@
             "composer": {
               "history_search_next": null,
               "history_search_previous": null,
+              "prepend_goal": null,
               "queue": null,
               "submit": null,
               "toggle_shortcuts": null
@@ -5184,6 +5186,14 @@
           ],
           "description": "Move back through pending async questions toward the composer."
         },
+        "resume_goal": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/KeybindingsSpec"
+            }
+          ],
+          "description": "Resume an existing paused, blocked or usage-limited goal without editing the draft."
+        },
         "skip_question": {
           "allOf": [
             {
@@ -5230,6 +5240,14 @@
             }
           ],
           "description": "Open reverse history search or move to the previous match."
+        },
+        "prepend_goal": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/KeybindingsSpec"
+            }
+          ],
+          "description": "Toggle the leading `/goal ` prefix without submitting the draft."
         },
         "queue": {
           "allOf": [
@@ -5613,6 +5631,7 @@
             "next_permission_mode": null,
             "previous_permission_mode": null,
             "prompt_stack_back": null,
+            "resume_goal": null,
             "skip_question": null,
             "toggle_voice": null,
             "toggle_voice_mute": null
@@ -5627,6 +5646,7 @@
           "default": {
             "history_search_next": null,
             "history_search_previous": null,
+            "prepend_goal": null,
             "queue": null,
             "submit": null,
             "toggle_shortcuts": null

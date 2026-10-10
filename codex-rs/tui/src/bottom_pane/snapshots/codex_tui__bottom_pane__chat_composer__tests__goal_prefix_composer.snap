@@ -1,0 +1,14 @@
+---
+source: tui/src/bottom_pane/chat_composer.rs
+assertion_line: 5326
+expression: terminal.backend()
+---
+"                                                            "
+"› /goal Improve test coverage                               "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                         100% context left  "
