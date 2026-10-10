@@ -5119,7 +5119,7 @@
               "$ref": "#/definitions/KeybindingsSpec"
             }
           ],
-          "description": "Prepend `/goal ` to the draft without submitting it."
+          "description": "Toggle the leading `/goal ` prefix without submitting the draft."
         },
         "queue": {
           "allOf": [

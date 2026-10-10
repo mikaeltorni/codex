@@ -109,7 +109,7 @@ pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
     action("chat", "Chat", "toggle_voice", "Start or stop a voice conversation."),
     action("chat", "Chat", "toggle_voice_mute", "Mute or unmute the voice microphone."),
     action("composer", "Composer", "submit", "Submit the current composer draft."),
-    action("composer", "Composer", "prepend_goal", "Prepend /goal to the draft without submitting it."),
+    action("composer", "Composer", "prepend_goal", "Toggle /goal on the draft without submitting it."),
     action("composer", "Composer", "queue", "Queue the draft while a task is running."),
     action("composer", "Composer", "toggle_shortcuts", "Show or hide the composer shortcut overlay."),
     action("composer", "Composer", "history_search_previous", "Open history search or move to the previous match."),

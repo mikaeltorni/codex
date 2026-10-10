@@ -30,8 +30,9 @@
 //!
 //! Plain Left opens agents when the local-daemon composer is empty and available for input.
 //! Explicit editor remaps take precedence.
-//! The native goal-prefix shortcut prepends `/goal ` without submitting; it preserves draft
-//! elements and flushes buffered typing first. Existing goal prefixes remain unchanged.
+//! The native goal-prefix shortcut toggles a leading `/goal` without submitting; it preserves
+//! draft elements and flushes buffered typing first. Removal consumes one whitespace separator
+//! while retaining additional draft whitespace and rebasing the cursor and element offsets.
 //! Most key handling goes through [`ChatComposer::handle_key_event`], which dispatches to a
 //! popup-specific handler if a popup is visible and otherwise to
 //! [`ChatComposer::handle_key_event_without_popup`]. After every handled key, we call
