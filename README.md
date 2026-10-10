@@ -71,6 +71,34 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+### Goal shortcuts
+
+Start the native TUI with `codex --enable goals`, or enable Goals in `~/.codex/config.toml` as shown below. With the composer focused:
+
+| Shortcut | Behavior |
+| --- | --- |
+| **Alt+G** | Toggle the leading `/goal` without submitting. Add `/goal ` when absent; remove an existing `/goal` and one separating whitespace character when present. Keep the remaining text, pastes and attachments, and adjust the cursor for the prefix edit. A bare `/goal` becomes an empty draft. |
+| **Alt+Shift+G** | Immediately resume the current thread's paused, blocked or usage-limited Goal through the existing `/goal resume` lifecycle and continuation, preserving the composer and requiring no confirmation. |
+
+Use `/goal <objective>` to set a Goal and `/goal resume` to resume it by command. Resume does nothing without an eligible Goal; active, complete and budget-limited Goals are ineligible. Resumption yields to popups, searches and modal views. Server-side Goal validation and usage limits still apply.
+
+Both actions appear in `/keymap` and support the native binding settings:
+
+```toml
+[features]
+goals = true
+
+[tui.keymap.composer]
+prepend_goal = "alt-g"
+
+[tui.keymap.chat]
+resume_goal = "alt-shift-g"
+```
+
+Use a key string, an array of alternatives, or a two-stroke chord such as `"ctrl-x g"`; `[]` disables an action. New defaults yield to existing custom shortcuts and overlapping chord prefixes. Explicit conflicting bindings are rejected.
+
+The native matcher distinguishes Alt+`g` from Alt+Shift+`g` and also accepts legacy Alt+uppercase `G` reporting. Codex retains its existing negotiated [keyboard enhancement support](https://sw.kovidgoyal.net/kitty/keyboard-protocol/). Some terminals, multiplexers or OS bindings lose this distinction; legacy Caps Lock reporting can also be ambiguous. On macOS, configure Option to send Alt/Meta or an Escape prefix. Use `/keymap debug` to inspect received keys and remap the actions to distinct keys such as `f6` and `f7` if needed.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
