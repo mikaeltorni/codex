@@ -75,7 +75,7 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
-### Goal shortcuts
+## Goal shortcuts
 
 Start the native TUI with `codex --enable goals`, or enable Goals in `~/.codex/config.toml` as shown below. With the composer focused:
 
@@ -102,7 +102,6 @@ resume_goal = "alt-shift-g"
 Use a key string, an array of alternatives, or a two-stroke chord such as `"ctrl-x g"`; `[]` disables an action. New defaults yield to existing custom shortcuts and overlapping chord prefixes. Explicit conflicting bindings are rejected.
 
 The native matcher distinguishes Alt+`g` from Alt+Shift+`g` and also accepts legacy Alt+uppercase `G` reporting. Codex retains its existing negotiated [keyboard enhancement support](https://sw.kovidgoyal.net/kitty/keyboard-protocol/). Some terminals, multiplexers or OS bindings lose this distinction; legacy Caps Lock reporting can also be ambiguous. On macOS, configure Option to send Alt/Meta or an Escape prefix. Use `/keymap debug` to inspect received keys and remap the actions to distinct keys such as `f6` and `f7` if needed.
-
 
 ## Fork usage-limit recovery
 
@@ -133,13 +132,13 @@ another recovery action. Enter remains composer input, including for `/status`
 and `/usage`. The focused Reserve recovery picker appears only while Reserve
 is the selected model.
 
-
 ### Checking the local deployment
 
-On this machine, registered CX accounts share the installed Codex CLI and Code
-Mode host. The main, Qwen, OpenRouter, and NVIDIA harnesses use the local `main`
-branch, which includes Codex 0.161.0 and the fork recovery changes. The setup
-repository publishes both binaries together to each harness:
+The local `main` source includes Codex 0.162.1, usage-limit recovery, Goal
+shortcuts, and the Reserve opt-out. Registered CX accounts share the installed
+Codex CLI and Code Mode host. The native setup repository selects the deployed
+Git ref independently and publishes both binaries together to the main, Qwen,
+OpenRouter, and NVIDIA harnesses. To install the integrated `main` source:
 
 ```shell
 CODEX_FORK_REF=main bash "$HOME/projects/linux_codex_claude_code_setup/scripts/sync_codex_fork.sh"
@@ -161,19 +160,31 @@ registered account. They preserve the selected account and start no agent turns.
 The [coverage inventory](scripts/install/cx_deployment_coverage.md) describes
 the saved cases. Documentation-only commits do not require rebuilding the runtime.
 
-For the TUI regression suite, run from `codex-rs` using the installed CLI:
+For focused native regressions, build test-profile fixture binaries from
+`codex-rs` first, then run the tests with those binaries:
 
 ```shell
+CARGO_PROFILE_CI_TEST_DEBUG=0 CARGO_BUILD_JOBS=1 \
+  CARGO_TARGET_DIR="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target" \
+  cargo build --profile ci-test -p codex-cli --bin codex \
+    -p codex-code-mode-host --bin codex-code-mode-host \
+    -p codex-rmcp-client --bin test_stdio_server
 umask 077
 env -u NO_COLOR TERM=xterm-256color \
-  CARGO_BIN_EXE_codex="$HOME/.local/share/linux_codex_claude_code_setup/npm/bin/codex" \
+  CARGO_PROFILE_CI_TEST_DEBUG=0 CARGO_BUILD_JOBS=1 \
+  CARGO_BIN_EXE_codex="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target/ci-test/codex" \
+  CARGO_BIN_EXE_test_stdio_server="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target/ci-test/test_stdio_server" \
+  CARGO_BIN_EXE_codex-code-mode-host="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target/ci-test/codex-code-mode-host" \
   CARGO_TARGET_DIR="$HOME/.cache/linux_codex_claude_code_setup/codex-main/target" \
-  just test -p codex-tui
+  just test --cargo-profile ci-test -p codex-core -p codex-tui \
+    -p codex-features -p codex-app-server -p codex-app-server-protocol \
+    -E 'package(codex-features) | test(usage_limit) | test(usage_wait) | test(backend_banner) | test(goal_prefix) | test(goal_resume_shortcut) | test(keymap)'
 ```
 
-Private fixture directories satisfy existing IPC trust checks. The normal
-terminal color environment preserves escape-sequence assertions. The complete
-workspace suite requires separate approval under this repository's `AGENTS.md`.
+Test-profile builds support isolated temporary home fixtures. The terminal
+variables preserve escape-sequence assertions. Final merge verification passed
+633 focused native checks, including generated schemas and the retained
+Reserve, Usage and Goal regressions. The complete workspace suite was not run.
 
 ### Automatic GPT Reserve switching
 
@@ -197,27 +208,29 @@ Restart the CLI and resume the same conversation after changing the setting.
 The saved regression runner is documented in
 [codex-rs/tui/reserve_switch_coverage.md](codex-rs/tui/reserve_switch_coverage.md).
 
-The opt-out was developed on `feat/codex_reserve-auto-switch-config`, based on
-`rust-v0.160.1`, for upstream review. That release automatically selects Reserve
-in its [account-banner handler](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/tui/src/chatwidget/backend_banners.rs)
-and has no corresponding opt-out in its
-[configuration schema](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/core/config.schema.json).
-The new flag defaults to `true` to preserve that behavior unless explicitly
-configured. Local installer policy is maintained separately by native setup
-and Agent Command Center.
+## Clean upstream PR branches
 
-Validation on the release-based branch executed 45 focused feature, Reserve
-and backend-banner checks, all passing. The saved coverage inventory names the
-runner and cases; the full workspace suite was not run. `just fmt`,
-`just write-config-schema` and `just bazel-lock-update` also completed. The lockfile
-change only aligns existing workspace package versions with the release's
-`0.160.1` manifest; it introduces no dependency upgrade.
+The original feature-only heads are preserved as local review branches based
+on `rust-v0.162.1`. Their changes exclude the local `main` integration history:
 
-Review the focused change with:
+| Feature | Local PR branch | Changes since the release |
+| --- | --- | --- |
+| Reserve opt-out | `pr/codex_optional-reserve-1621` | One feature commit, six files. |
+| Usage-limit recovery | `pr/codex_usage-limit-auto-resume-1621` | Feature plus documentation commits, 84 files. |
+| Goal shortcuts | `pr/codex_goal-shortcuts-1621` | Feature plus documentation commits, 23 files. |
+
+Review each feature against the release before publishing:
 
 ```shell
-git diff rust-v0.160.1...feat/codex_reserve-auto-switch-config
+git diff rust-v0.162.1...pr/codex_optional-reserve-1621
+git diff rust-v0.162.1...pr/codex_usage-limit-auto-resume-1621
+git diff rust-v0.162.1...pr/codex_goal-shortcuts-1621
 ```
+
+The `feat/codex_*pr-1621` branches contain conflict resolutions against the
+fork's `main`; all three have been merged into local `main`. The `pr/` branches
+above retain the separate upstream review diffs. No branch was pushed by this
+integration task.
 
 ## Docs
 
