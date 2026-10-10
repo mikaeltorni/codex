@@ -670,6 +670,12 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
             "usage_wait_personal_pro",
         ),
         (
+            PlanType::ProMax,
+            "Personal usage limit reached",
+            None,
+            "usage_wait_personal_pro",
+        ),
+        (
             PlanType::Team,
             "Workspace usage limit reached",
             Some("Request increase"),
@@ -1177,5 +1183,39 @@ async fn usage_wait_pro_max_retains_reset_without_upgrade() {
     assert!(rendered.contains("Redeem reset"), "{rendered}");
     assert!(!rendered.contains("Upgrade"), "{rendered}");
     assert!(!rendered.contains("Request increase"), "{rendered}");
+    println!("None");
+}
+
+/// Keep explicit model selection available when automatic Reserve switching is disabled.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn reserve_auto_switch_disabled_keeps_manual_models_available() {
+    println!("parameters=none");
+    let (mut chat, _events, _ops) = make_chatwidget_manual(Some("test-model-a")).await;
+    let flags: codex_features::FeaturesToml =
+        toml::from_str("luna_reserve_auto_switch = false").unwrap();
+    let configured = codex_features::Features::from_sources(
+        codex_features::FeatureConfigSource {
+            features: Some(&flags),
+            ..Default::default()
+        },
+        codex_features::FeatureConfigSource::default(),
+        codex_features::FeatureOverrides::default(),
+    );
+    chat.config.features =
+        crate::legacy_core::config::ManagedFeatures::from_configured_with_warnings(
+            configured,
+            /*feature_requirements*/ None,
+            &mut Vec::new(),
+        )
+        .unwrap();
+    let mut response = banner_response(Some("dismissible"), json!([]));
+    response.rate_limit_upsell.as_mut().unwrap()["banner_type"] = json!("luna_reserve");
+    chat.update_backend_banner(&response);
+    assert!(!chat.waiting_for_luna_reserve());
+    assert!(!chat.defer_pending_turn_for_luna_reserve());
+    chat.set_model("gpt-reserve");
+    assert!(!chat.restrict_model_picker_to_luna_reserve());
     println!("None");
 }
