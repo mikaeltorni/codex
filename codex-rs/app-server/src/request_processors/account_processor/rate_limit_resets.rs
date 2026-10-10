@@ -80,6 +80,11 @@ impl AccountRequestProcessor {
         .map_err(|err| internal_error(format!("failed to consume rate limit reset: {err}")))?;
         let outcome = match response.code {
             BackendConsumeRateLimitResetCreditCode::Reset => {
+                for thread_id in self.thread_manager.list_thread_ids().await {
+                    if let Ok(thread) = self.thread_manager.get_thread(thread_id).await {
+                        thread.notify_usage_limit_reset().await;
+                    }
+                }
                 ConsumeAccountRateLimitResetCreditOutcome::Reset
             }
             BackendConsumeRateLimitResetCreditCode::NothingToReset => {

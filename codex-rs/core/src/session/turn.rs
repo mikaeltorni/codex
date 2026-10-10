@@ -38,6 +38,7 @@ use crate::session::daemon_recovery::RecordedTurnInput;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
+use crate::session::usage_limit_wait::continue_after_usage_limit;
 use crate::skills::emit_explicit_skill_invocations;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::InFlightFuture;
@@ -541,7 +542,14 @@ pub(crate) async fn run_turn(
         }
         .await;
         match sampling_request_result {
-            Ok((sampling_request_output, sampling_request_input)) => {
+            Ok(SamplingRequestOutcome::Retry) => {
+                can_drain_pending_input = true;
+                continue;
+            }
+            Ok(SamplingRequestOutcome::Complete(
+                sampling_request_output,
+                sampling_request_input,
+            )) => {
                 guardian_budget_compacted = false;
                 let SamplingRequestResult {
                     needs_follow_up: model_needs_follow_up,
@@ -1608,7 +1616,7 @@ async fn run_sampling_request(
     client_session: &mut ModelClientSession,
     input: Vec<ResponseItem>,
     cancellation_token: CancellationToken,
-) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
+) -> CodexResult<SamplingRequestOutcome> {
     let turn_context = Arc::clone(&step_context.turn);
     let preempt = step_context.preempt.clone().unwrap_or_default();
     let _input_watch = if let Some(preempt) = &step_context.preempt {
@@ -1682,7 +1690,10 @@ async fn run_sampling_request(
         .await
         {
             Ok(output) => {
-                return Ok((output, original_input.unwrap_or(prompt.input)));
+                return Ok(SamplingRequestOutcome::Complete(
+                    output,
+                    original_input.unwrap_or(prompt.input),
+                ));
             }
             Err(err) => match err.details() {
                 CodexErrorDetails::ContextWindowExceeded => {
@@ -1693,6 +1704,11 @@ async fn run_sampling_request(
                     let rate_limits = e.rate_limits.clone();
                     if let Some(rate_limits) = rate_limits {
                         sess.update_rate_limits(&turn_context, *rate_limits).await;
+                    }
+                    if continue_after_usage_limit(&sess, &turn_context, e, &cancellation_token)
+                        .await?
+                    {
+                        return Ok(SamplingRequestOutcome::Retry);
                     }
                     return Err(err);
                 }
@@ -1718,7 +1734,7 @@ async fn run_sampling_request(
             return Err(CodexErr::TurnAborted);
         }
         if preempt.is_cancelled() {
-            return Ok((
+            return Ok(SamplingRequestOutcome::Complete(
                 SamplingRequestResult {
                     needs_follow_up: true,
                     last_agent_message: None,
@@ -1869,6 +1885,12 @@ pub(crate) async fn built_tools(
 struct SamplingRequestResult {
     needs_follow_up: bool,
     last_agent_message: Option<String>,
+}
+
+enum SamplingRequestOutcome {
+    Complete(SamplingRequestResult, Vec<ResponseItem>),
+    /// Resume through the normal step boundary so accepted settings are captured again.
+    Retry,
 }
 
 /// Ephemeral per-response state for streaming a single proposed plan.
@@ -2098,6 +2120,8 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
         }
         EventMsg::Error(_)
         | EventMsg::Warning(_)
+        | EventMsg::UsageLimitWaitStarted(_)
+        | EventMsg::UsageLimitWaitEnded
         | EventMsg::AuthRecoveryStarted(_)
         | EventMsg::AuthRecoveryCompleted(_)
         | EventMsg::GuardianWarning(_)

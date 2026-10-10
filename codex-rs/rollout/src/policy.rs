@@ -171,6 +171,8 @@ fn persisted_event_msg(
         | EventMsg::DynamicToolCallRequest(_)
         | EventMsg::DynamicToolCallResponse(_)
         | EventMsg::Warning(_)
+        | EventMsg::UsageLimitWaitStarted(_)
+        | EventMsg::UsageLimitWaitEnded
         | EventMsg::AuthRecoveryStarted(_)
         | EventMsg::AuthRecoveryCompleted(_)
         | EventMsg::GuardianWarning(_)
