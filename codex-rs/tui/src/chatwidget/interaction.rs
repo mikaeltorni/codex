@@ -57,6 +57,8 @@ impl ChatWidget {
         self.bottom_pane.keymap_contexts()
     }
 
+    /// Route native chat shortcuts and focused composer input.
+    /// Parameters: self - chat widget; key_event - terminal event. Returns: app-level input action.
     pub(crate) fn handle_key_event(&mut self, key_event: KeyEvent) -> KeyEventAction {
         if self.handle_startup_submission_key(key_event) {
             return KeyEventAction::None;
@@ -93,6 +95,10 @@ impl ChatWidget {
 
         if self.shortcut_overlay_visible() && key_hint::plain(KeyCode::Esc).is_press(key_event) {
             self.bottom_pane.handle_key_event(key_event);
+            return KeyEventAction::None;
+        }
+
+        if self.handle_goal_resume_shortcut(key_event) {
             return KeyEventAction::None;
         }
 

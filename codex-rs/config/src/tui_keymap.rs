@@ -169,6 +169,8 @@ pub struct TuiGlobalKeymap {
 #[serde(deny_unknown_fields)]
 #[schemars(deny_unknown_fields)]
 pub struct TuiChatKeymap {
+    /// Resume an existing paused, blocked or usage-limited goal without editing the draft.
+    pub resume_goal: Option<KeybindingsSpec>,
     /// Start or stop a voice conversation.
     pub toggle_voice: Option<KeybindingsSpec>,
     /// Toggle the microphone in an active voice conversation.
@@ -196,6 +198,8 @@ pub struct TuiChatKeymap {
 #[serde(deny_unknown_fields)]
 #[schemars(deny_unknown_fields)]
 pub struct TuiComposerKeymap {
+    /// Toggle the leading `/goal ` prefix without submitting the draft.
+    pub prepend_goal: Option<KeybindingsSpec>,
     /// Submit the current composer draft.
     pub submit: Option<KeybindingsSpec>,
     /// Queue the current composer draft while a task is running.
