@@ -168,7 +168,7 @@ impl ChatKeymap {
 /// The conflict validator prevents this by checking app + composer uniqueness.
 #[derive(Clone, Debug)]
 pub(crate) struct ComposerKeymap {
-    /// Prepend `/goal ` without submitting the draft.
+    /// Toggle the leading `/goal ` prefix without submitting the draft.
     pub(crate) prepend_goal: Vec<KeyBinding>,
     /// Submit current draft.
     pub(crate) submit: Vec<KeyBinding>,
