@@ -87,10 +87,15 @@ impl ChatWidget {
     }
 
     #[cfg(test)]
+    /// Route focused input without a view activation key.
+    /// Parameters: self - chat widget; key_event - terminal event. Returns: app-level input action.
     pub(crate) fn handle_key_event(&mut self, key_event: KeyEvent) -> KeyEventAction {
         self.handle_key_event_with_activation_key(key_event, /*activation_key*/ None)
     }
 
+    /// Route native chat shortcuts and focused composer input.
+    /// Parameters: self - chat widget; key_event - terminal event; activation_key - view-opening key.
+    /// Returns: app-level input action.
     pub(crate) fn handle_key_event_with_activation_key(
         &mut self,
         key_event: KeyEvent,
@@ -133,6 +138,10 @@ impl ChatWidget {
         if self.shortcut_overlay_visible() && key_hint::plain(KeyCode::Esc).is_press(key_event) {
             self.bottom_pane
                 .handle_key_event_with_activation_key(key_event, activation_key);
+            return KeyEventAction::None;
+        }
+
+        if self.handle_goal_resume_shortcut(key_event) {
             return KeyEventAction::None;
         }
 

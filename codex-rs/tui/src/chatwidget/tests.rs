@@ -249,6 +249,8 @@ mod copy_export_picker_tests;
 mod dynamic_activity_tests;
 mod exec_flow;
 mod goal_menu;
+#[path = "tests/goal_shortcuts_tests.rs"]
+mod goal_shortcuts;
 mod goal_validation;
 mod guardian;
 pub(crate) mod helpers;

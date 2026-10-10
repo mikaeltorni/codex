@@ -284,6 +284,7 @@ define_runtime_action_bindings! {
         toggle_side_conversation,
     ],
     "chat" => Chat, chat, chat [
+        resume_goal,
         toggle_voice,
         interrupt_turn,
         decrease_reasoning_effort,
@@ -296,6 +297,7 @@ define_runtime_action_bindings! {
     ],
     "chat" => Voice, chat, chat [toggle_voice_mute],
     "composer" => Composer, composer, composer [
+        prepend_goal,
         submit,
         queue,
         toggle_shortcuts,
