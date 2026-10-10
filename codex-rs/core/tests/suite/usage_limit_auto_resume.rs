@@ -23,8 +23,12 @@ use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
 
+/// Verify accepted steering resumes repeated waits inside the original root turn.
+/// Parameters: none.
+/// Returns: success after all retry requests retain the accepted inputs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn steering_resumes_repeated_quota_waits_with_the_accepted_input() -> anyhow::Result<()> {
+    println!("parameters=none");
     let server = MockServer::start().await;
     let quota = ResponseTemplate::new(/*s*/ 429).set_body_json(json!({
         "error": {
@@ -64,7 +68,11 @@ async fn steering_resumes_repeated_quota_waits_with_the_accepted_input() -> anyh
             },
         ]))
         .await?;
-    let codex_protocol::turn_input::TurnInputSubmission::Started { turn_id } = started else {
+    let codex_protocol::turn_input::TurnInputSubmission::Started {
+        turn_id,
+        root_turn_id,
+    } = started
+    else {
         panic!("expected a new turn");
     };
     for text in ["first correction", "second correction"] {
@@ -84,7 +92,8 @@ async fn steering_resumes_repeated_quota_waits_with_the_accepted_input() -> anyh
         assert_eq!(
             steered,
             codex_protocol::turn_input::TurnInputSubmission::Steered {
-                turn_id: turn_id.clone()
+                turn_id: turn_id.clone(),
+                root_turn_id: root_turn_id.clone(),
             }
         );
         tokio::time::timeout(
@@ -110,6 +119,7 @@ async fn steering_resumes_repeated_quota_waits_with_the_accepted_input() -> anyh
         expected.push(text.to_string());
         assert_eq!(request.message_input_texts("user"), expected);
     }
+    println!("Ok(())");
     Ok(())
 }
 

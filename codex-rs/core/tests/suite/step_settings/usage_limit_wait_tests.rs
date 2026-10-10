@@ -3,8 +3,12 @@ use chrono::Utc;
 use pretty_assertions::assert_eq;
 use wiremock::ResponseTemplate;
 
+/// Verify accepted model updates resume quota waits without dropping the original input.
+/// Parameters: none.
+/// Returns: success after requests use the independently expected model sequence.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn model_updates_resume_quota_wait_with_the_accepted_settings() -> Result<()> {
+    println!("parameters=none");
     let server = start_mock_server().await;
     let quota = ResponseTemplate::new(/*s*/ 429).set_body_json(json!({
         "error": {
@@ -37,7 +41,8 @@ async fn model_updates_resume_quota_wait_with_the_accepted_settings() -> Result<
             text_elements: Vec::new(),
         }]))
         .await?;
-    let codex_protocol::turn_input::TurnInputSubmission::Started { turn_id } = submission else {
+    let codex_protocol::turn_input::TurnInputSubmission::Started { turn_id, .. } = submission
+    else {
         panic!("expected a new turn");
     };
     for model in [MODEL_B, MODEL_C] {
@@ -86,5 +91,6 @@ async fn model_updates_resume_quota_wait_with_the_accepted_settings() -> Result<
             .message_input_texts("user")
             .contains(&"keep this request".to_string())
     );
+    println!("Ok(())");
     Ok(())
 }
