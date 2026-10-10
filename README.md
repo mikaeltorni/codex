@@ -77,7 +77,7 @@ Start the native TUI with `codex --enable goals`, or enable Goals in `~/.codex/c
 
 | Shortcut | Behavior |
 | --- | --- |
-| **Alt+G** | Prepend `/goal ` without submitting. Keep existing text, pastes and attachments, and the cursor's position within that text; an existing Goal command prefix is retained. |
+| **Alt+G** | Toggle the leading `/goal` without submitting. Add `/goal ` when absent; remove an existing `/goal` and one separating whitespace character when present. Keep the remaining text, pastes and attachments, and adjust the cursor for the prefix edit. A bare `/goal` becomes an empty draft. |
 | **Alt+Shift+G** | Immediately resume the current thread's paused, blocked or usage-limited Goal through the existing `/goal resume` lifecycle and continuation, preserving the composer and requiring no confirmation. |
 
 Use `/goal <objective>` to set a Goal and `/goal resume` to resume it by command. Resume does nothing without an eligible Goal; active, complete and budget-limited Goals are ineligible. Resumption yields to popups, searches and modal views. Server-side Goal validation and usage limits still apply.
