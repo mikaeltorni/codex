@@ -75,6 +75,20 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+## Image prompts
+
+Attach local images to the interactive CLI with `--image` (repeatable):
+
+```shell
+codex --image screenshot.png -- '/goal inspect this screenshot'
+```
+
+Codex sends the prompt text before its image attachments. Image labels appear
+at the end of the prompt's final logical line, such as
+`/goal inspect this screenshot [Image #1]`, with normal terminal-width wrapping.
+This also applies to images passed by ACC's `ca -ic "inspect this screenshot"`.
+The `/goal` prefix stays at the start of the submitted text.
+
 ## Goal shortcuts
 
 Start the native TUI with `codex --enable goals`, or enable Goals in `~/.codex/config.toml` as shown below. With the composer focused:
