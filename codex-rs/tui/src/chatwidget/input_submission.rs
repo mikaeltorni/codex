@@ -126,6 +126,11 @@ impl ChatWidget {
         )
     }
 
+    /// Submit prompt text before image inputs while retaining queue and image-validation behavior.
+    /// Parameters: self - active chat; user_message - prompt and attachments; history_record - recall text;
+    /// shell_escape_policy - whether shell input may execute; source - submission origin;
+    /// prepared_images - optional portable attachment inputs.
+    /// Returns: acceptance and the submitted command when available.
     pub(super) fn submit_user_message_with_prepared_images(
         &mut self,
         user_message: UserMessage,
@@ -134,9 +139,16 @@ impl ChatWidget {
         source: UserMessageSource,
         prepared_images: Option<Vec<UserInput>>,
     ) -> (bool, Option<AppCommand>) {
+        #[cfg(test)]
+        println!(
+            "self={self:p}, user_message={user_message:?}, history_record={history_record:?}, shell_escape_policy={shell_escape_policy:?}, source={source:?}, prepared_images={prepared_images:?}"
+        );
         self.bottom_pane.dismiss_composer_sparkle();
         if self.has_misalignment_policy_violation() {
-            return (false, None);
+            let result = (false, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
         self.empty_state_animation.borrow_mut().dismiss();
         if self.input_queue.rate_limit_recovery_pending || self.pending_image_submission.is_some() {
@@ -169,7 +181,10 @@ impl ChatWidget {
             if model_prompt {
                 self.bottom_pane.clear_pending_questions();
             }
-            return (true, None);
+            let result = (true, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
         if !self.is_session_configured() {
             let model_prompt = source == UserMessageSource::Prompt
@@ -189,13 +204,19 @@ impl ChatWidget {
             if model_prompt {
                 self.bottom_pane.clear_pending_questions();
             }
-            return (true, None);
+            let result = (true, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
         if user_message.text.is_empty()
             && user_message.local_images.is_empty()
             && user_message.remote_image_urls.is_empty()
         {
-            return (false, None);
+            let result = (false, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
         if (!user_message.local_images.is_empty() || !user_message.remote_image_urls.is_empty())
             && !self.current_model_supports_images()
@@ -214,7 +235,10 @@ impl ChatWidget {
                 mention_bindings,
                 remote_image_urls,
             );
-            return (false, None);
+            let result = (false, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
         let UserMessage {
             text,
@@ -237,7 +261,10 @@ impl ChatWidget {
                     stripped.trim().to_string(),
                 )),
             };
-            return (app_command.is_some(), app_command);
+            let result = (app_command.is_some(), app_command);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
 
         for image_url in &remote_image_urls {
@@ -263,7 +290,10 @@ impl ChatWidget {
                 history_record,
                 source,
             );
-            return (true, None);
+            let result = (true, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         } else {
             items.extend(local_images.iter().map(|image| UserInput::LocalImage {
                 path: image.path.clone(),
@@ -272,10 +302,13 @@ impl ChatWidget {
         }
 
         if !text.is_empty() {
-            items.push(UserInput::Text {
-                text: text.clone(),
-                text_elements: app_server_text_elements(&text_elements),
-            });
+            items.insert(
+                0,
+                UserInput::Text {
+                    text: text.clone(),
+                    text_elements: app_server_text_elements(&text_elements),
+                },
+            );
         }
 
         if !self.bottom_pane.task_mentions_enabled() {
@@ -408,7 +441,10 @@ impl ChatWidget {
                 },
                 &history_record,
             ));
-            return (false, None);
+            let result = (false, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
 
         self.maybe_apply_ide_context(&mut items);
@@ -479,7 +515,10 @@ impl ChatWidget {
         }
 
         if !self.submit_op(op.clone()) {
-            return (false, None);
+            let result = (false, None);
+            #[cfg(test)]
+            println!("{result:?}");
+            return result;
         }
         if source == UserMessageSource::Prompt {
             self.bottom_pane.clear_pending_questions();
@@ -554,7 +593,10 @@ impl ChatWidget {
             self.last_rendered_user_message_display = Some(display);
         }
 
-        (true, Some(op))
+        let result = (true, Some(op));
+        #[cfg(test)]
+        println!("{result:?}");
+        result
     }
 
     /// Restore the blocked submission draft without losing mention resolution state.

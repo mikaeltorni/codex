@@ -414,8 +414,12 @@ async fn parent_owned_thread_preserves_queued_input_before_draining() {
     assert_no_submit_op(&mut op_rx);
 }
 
+/// Keep prompt elements and local images while submitting text first.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn submission_preserves_text_elements_and_local_images() {
+    println!("parameters=none");
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     let thread_id = ThreadId::new();
@@ -464,14 +468,14 @@ async fn submission_preserves_text_elements_and_local_images() {
     };
     assert_eq!(items.len(), 2);
     assert_eq!(
-        items[0],
+        items[1],
         UserInput::LocalImage {
             path: local_images[0].clone(),
             detail: None,
         }
     );
     assert_eq!(
-        items[1],
+        items[0],
         UserInput::Text {
             text: text.clone(),
             text_elements: text_elements.clone().into_iter().map(Into::into).collect(),
@@ -499,6 +503,7 @@ async fn submission_preserves_text_elements_and_local_images() {
     assert_eq!(stored_elements, text_elements);
     assert_eq!(stored_images, local_images);
     assert!(stored_remote_image_urls.is_empty());
+    println!("None");
 }
 
 #[tokio::test]
@@ -626,8 +631,12 @@ async fn submission_omits_active_permission_profile_for_legacy_snapshot() {
     assert_eq!(active_permission_profile, None);
 }
 
+/// Keep mixed-image numbering while submitting the text before its attachments.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn submission_with_remote_and_local_images_keeps_local_placeholder_numbering() {
+    println!("parameters=none");
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     let thread_id = ThreadId::new();
@@ -680,7 +689,7 @@ async fn submission_with_remote_and_local_images_keeps_local_placeholder_numberi
     };
     assert_eq!(items.len(), 3);
     assert_eq!(
-        items[0],
+        items[1],
         UserInput::Image {
             image: ImageReference::Inline {
                 url: remote_url.clone(),
@@ -689,14 +698,14 @@ async fn submission_with_remote_and_local_images_keeps_local_placeholder_numberi
         }
     );
     assert_eq!(
-        items[1],
+        items[2],
         UserInput::LocalImage {
             path: local_images[0].clone(),
             detail: None,
         }
     );
     assert_eq!(
-        items[2],
+        items[0],
         UserInput::Text {
             text: text.clone(),
             text_elements: text_elements.clone().into_iter().map(Into::into).collect(),
@@ -725,6 +734,7 @@ async fn submission_with_remote_and_local_images_keeps_local_placeholder_numberi
     assert_eq!(stored_elements, text_elements);
     assert_eq!(stored_images, local_images);
     assert_eq!(stored_remote_image_urls, vec![remote_url]);
+    println!("None");
 }
 
 #[tokio::test]
@@ -2462,8 +2472,12 @@ async fn reconnect_keeps_queue_paused_after_pending_compact() {
     assert_no_submit_op(&mut ops);
 }
 
+/// Keep portable image bytes, text-first ordering and deduplicated history through turns and steers.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test(flavor = "multi_thread")]
 async fn image_submission_is_portable_for_new_turns_and_steers() {
+    println!("parameters=none");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("image.png");
     // Transport must not apply the helper's default 2048-pixel resize policy.
@@ -2524,11 +2538,11 @@ async fn image_submission_is_portable_for_new_turns_and_steers() {
                 }
             };
             let [
+                UserInput::Text { .. },
                 UserInput::Image {
                     image: ImageReference::Inline { url },
                     detail,
                 },
-                UserInput::Text { .. },
             ] = items.as_slice()
             else {
                 panic!("local image must be portable on the wire");
@@ -2572,6 +2586,7 @@ async fn image_submission_is_portable_for_new_turns_and_steers() {
             drain_insert_history(&mut rx);
         }
     }
+    println!("None");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2840,4 +2855,44 @@ fn image_preparation_keeps_input_responsive_and_preserves_pending_input() {
                 assert!(chat.pending_image_submission.is_none());
             });
     }
+}
+
+/// Submit CLI clipboard images after the complete goal text, preserving attachment order.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn ic_images_submit_initial_goal_text_before_attachments() {
+    println!("parameters=none");
+    let (mut chat, _events, mut operations) = make_chatwidget_manual(None).await;
+    chat.thread_id = Some(ThreadId::new());
+    let text = "/goal inspect screenshot, then explain café 中";
+    let images = vec![
+        PathBuf::from("/tmp/first.png"),
+        PathBuf::from("/tmp/second.png"),
+    ];
+    chat.initial_user_message =
+        create_initial_user_message(Some(text.into()), images.clone(), Vec::new());
+    chat.submit_initial_user_message_if_pending();
+    let Op::UserTurn { items, .. } = next_submit_op(&mut operations) else {
+        panic!("expected startup user turn");
+    };
+    assert_eq!(
+        items,
+        vec![
+            UserInput::Text {
+                text: text.into(),
+                text_elements: Vec::new()
+            },
+            UserInput::LocalImage {
+                path: images[0].clone(),
+                detail: None
+            },
+            UserInput::LocalImage {
+                path: images[1].clone(),
+                detail: None
+            },
+        ]
+    );
+    assert!(chat.initial_user_message.is_none());
+    println!("None");
 }

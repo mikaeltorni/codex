@@ -383,3 +383,55 @@ fn spoken_windows_relative_paths_keep_original_text_and_link_the_workspace_file(
     }));
     insta::assert_snapshot!(line.line.to_string(), @"• Updated src\\lib.rs:42");
 }
+
+/// Keep CLI attachment labels behind the goal on its final logical line.
+/// Parameters: none.
+/// Returns: None.
+#[test]
+fn ic_images_follow_goal_text_on_same_line() {
+    println!("parameters=none");
+    for (message, expected) in [
+        (
+            "/goal inspect screenshot",
+            "› /goal inspect screenshot [Image #1] [Image #2]",
+        ),
+        (
+            "/goal inspect\nmore detail",
+            "  more detail [Image #1] [Image #2]",
+        ),
+        ("/goal inspect\n", "› /goal inspect [Image #1] [Image #2]"),
+        ("/goal café 中", "› /goal café 中 [Image #1] [Image #2]"),
+        ("", "› [Image #1] [Image #2]"),
+    ] {
+        let cell = new_user_prompt(
+            message.to_string(),
+            Vec::new(),
+            vec![PathBuf::from("first.png"), PathBuf::from("second.png")],
+            Vec::new(),
+        );
+        assert_eq!(cell.message, message);
+        assert!(cell.text_elements.is_empty());
+        let lines = cell.display_lines(120);
+        assert!(
+            lines.iter().any(|line| line.to_string() == expected),
+            "{message:?}: {lines:?}"
+        );
+        assert_eq!(cell.transcript_lines(120), lines);
+        assert_eq!(
+            cell.raw_lines()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            (message.trim_end_matches(['\r', '\n']).to_string()
+                + if message.is_empty() {
+                    "[Image #1] [Image #2]"
+                } else {
+                    " [Image #1] [Image #2]"
+                })
+            .split('\n')
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+        );
+    }
+    println!("None");
+}
