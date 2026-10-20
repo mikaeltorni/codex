@@ -7,8 +7,12 @@ use codex_app_server_protocol::ImageReference;
 use pretty_assertions::assert_eq;
 use pretty_assertions::assert_ne;
 
+/// Dismiss sparkle before ordinary and text-first prepared-image submissions render.
+/// Parameters: none.
+/// Returns: None.
 #[tokio::test]
 async fn ordinary_and_prepared_image_submissions_consume_the_sparkle_before_rendering() {
+    println!("parameters=none");
     let image = UserInput::Image {
         image: ImageReference::Inline {
             url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lFkAAAAASUVORK5CYII=".into(),
@@ -42,10 +46,13 @@ async fn ordinary_and_prepared_image_submissions_consume_the_sparkle_before_rend
         assert!(visible(&chat));
 
         let mut expected_items = prepared_images.clone().unwrap_or_default();
-        expected_items.push(UserInput::Text {
-            text: text.into(),
-            text_elements: Vec::new(),
-        });
+        expected_items.insert(
+            0,
+            UserInput::Text {
+                text: text.into(),
+                text_elements: Vec::new(),
+            },
+        );
         let message = UserMessage::from(text);
         let (accepted, _command) = match prepared_images {
             Some(images) => chat.submit_user_message_with_prepared_images(
@@ -74,4 +81,5 @@ async fn ordinary_and_prepared_image_submissions_consume_the_sparkle_before_rend
         };
         assert_eq!(items, expected_items);
     }
+    println!("None");
 }

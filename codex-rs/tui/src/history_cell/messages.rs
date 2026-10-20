@@ -161,6 +161,36 @@ impl UserHistoryCell {
             || !self.remote_image_urls.is_empty()
     }
 
+    /// Append missing attachment labels on the final logical line without changing stored input.
+    /// Parameters: self - the prompt and its attachment metadata.
+    /// Returns: display text and element ranges, borrowing unchanged prompts.
+    fn message_with_image_labels(&self) -> (Cow<'_, str>, Cow<'_, [TextElement]>) {
+        #[cfg(test)]
+        println!("self={self:p}");
+        let labels = self.image_labels_not_in_message().collect::<Vec<_>>();
+        let result = if labels.is_empty() {
+            (
+                Cow::Borrowed(self.message.as_str()),
+                Cow::Borrowed(self.text_elements.as_slice()),
+            )
+        } else {
+            let mut message = self.message.trim_end_matches(['\r', '\n']).to_string();
+            let mut elements = self.text_elements.clone();
+            for label in labels {
+                if !message.is_empty() {
+                    message.push(' ');
+                }
+                let start = message.len();
+                message.push_str(&label);
+                elements.push(TextElement::new((start..message.len()).into(), Some(label)));
+            }
+            (Cow::Owned(message), Cow::Owned(elements))
+        };
+        #[cfg(test)]
+        println!("{result:?}");
+        result
+    }
+
     fn image_labels_not_in_message(&self) -> impl Iterator<Item = String> + '_ {
         // Composer images already have placeholders; command-line images may not.
         // Both kinds must keep an image-only user turn visible after submission.
@@ -180,16 +210,22 @@ impl HistoryCell for UserHistoryCell {
         visible_lines(self.display_hyperlink_lines(width))
     }
 
+    /// Render prompt text followed by missing image labels before terminal wrapping.
+    /// Parameters: self - prompt history cell; width - available terminal columns.
+    /// Returns: styled prompt lines with hyperlink metadata.
     fn display_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
-        let sanitized_message = sanitize_user_text((&self.message).into());
+        #[cfg(test)]
+        println!("self={self:p}, width={width}");
+        let (rendered_message, rendered_elements) = self.message_with_image_labels();
+        let sanitized_message = sanitize_user_text(rendered_message.as_ref().into());
         // Speech transcripts can begin with whitespace; the marker already supplies its separator.
         let message = if self.spoken {
             sanitized_message.trim_start()
         } else {
             sanitized_message.as_ref()
         };
-        let text_elements = if message == self.message {
-            self.text_elements.as_slice()
+        let text_elements = if message == rendered_message {
+            rendered_elements.as_ref()
         } else {
             &[]
         };
@@ -200,51 +236,30 @@ impl HistoryCell for UserHistoryCell {
             .max(/*other*/ 1);
 
         let style = history_prompt_style();
-        let element_style = style.fg(accent_color_on(style.bg));
-
-        let wrapped_images = plain_hyperlink_lines(adaptive_wrap_lines(
-            self.image_labels_not_in_message()
-                .map(|label| Line::from(label).style(element_style)),
-            RtOptions::new(usize::from(wrap_width))
-                .wrap_algorithm(textwrap::WrapAlgorithm::FirstFit),
-        ));
-
-        let wrapped_message = wrap_user_message(message, text_elements, style, wrap_width);
-
-        if wrapped_images.is_empty() && wrapped_message.is_none() {
+        let Some(wrapped_message) = wrap_user_message(message, text_elements, style, wrap_width)
+        else {
+            #[cfg(test)]
+            println!("[]");
             return Vec::new();
-        }
-
+        };
         let mut lines = vec![HyperlinkLine::new(Line::from("").style(style))];
-
-        if !wrapped_images.is_empty() {
-            lines.extend(prefix_hyperlink_lines(
-                wrapped_images,
-                "  ".into(),
-                "  ".into(),
-            ));
-            if wrapped_message.is_some() {
-                lines.push(HyperlinkLine::new(Line::from("").style(style)));
-            }
-        }
-
-        if let Some(wrapped_message) = wrapped_message {
-            lines.extend(prefix_hyperlink_lines(
-                wrapped_message,
-                if self.spoken {
-                    "› ".red().bold()
-                } else {
-                    "› ".bold().dim()
-                },
-                "  ".into(),
-            ));
-        }
+        lines.extend(prefix_hyperlink_lines(
+            wrapped_message,
+            if self.spoken {
+                "› ".red().bold()
+            } else {
+                "› ".bold().dim()
+            },
+            "  ".into(),
+        ));
 
         lines.push(HyperlinkLine::new(Line::from("").style(style)));
         for source in lines.iter_mut().filter_map(|line| line.source.as_mut()) {
             source.right_reserve = 1;
             source.copy_as_prose = true;
         }
+        #[cfg(test)]
+        println!("{lines:?}");
         lines
     }
 
@@ -252,16 +267,17 @@ impl HistoryCell for UserHistoryCell {
         self.display_hyperlink_lines(width)
     }
 
+    /// Export the same text and appended labels used by the styled transcript.
+    /// Parameters: self - prompt history cell.
+    /// Returns: raw logical lines, preserving the prompt's internal newlines.
     fn raw_lines(&self) -> Vec<Line<'static>> {
-        let message = sanitize_user_text((&self.message).into());
-        let mut lines = raw_lines_from_source(message.as_ref().trim_end_matches(['\r', '\n']));
-        let mut image_labels = self.image_labels_not_in_message().peekable();
-        if image_labels.peek().is_some() {
-            if !lines.is_empty() {
-                lines.push(Line::from(""));
-            }
-            lines.extend(image_labels.map(Line::from));
-        }
+        #[cfg(test)]
+        println!("self={self:p}");
+        let (message, _) = self.message_with_image_labels();
+        let message = sanitize_user_text(message);
+        let lines = raw_lines_from_source(message.as_ref().trim_end_matches(['\r', '\n']));
+        #[cfg(test)]
+        println!("{lines:?}");
         lines
     }
 }
