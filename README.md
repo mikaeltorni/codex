@@ -254,3 +254,38 @@ integration task.
 - [**Open source fund**](./docs/open-source-fund.md)
 
 This repository is licensed under the [Apache-2.0 License](LICENSE).
+
+## Standalone fork installer and selection menu
+
+`bash install.sh` at this repository root opens a one-component selection menu
+on a terminal. This builds the current fork source directly; it needs no
+`mt_stack` or private setup repository. Noninteractive use applies the default.
+
+```bash
+bash install.sh --list-components
+bash install.sh --select codex_cli
+bash install.sh --home /path/to/user/home --default
+```
+
+The component builds both `codex` and `codex-code-mode-host` with locked release
+Cargo inputs and this fork's existing V8 artifact resolver. It publishes both to
+`~/.local/bin/` and records their digests under
+`~/.local/state/codex-fork/installed.json`. Required commands are Python 3,
+Git, Cargo, rustc, a C compiler, CMake and pkg-config. Rust comes from rustup;
+Ubuntu system prerequisites can be installed with
+`sudo apt-get install build-essential cmake pkg-config git`. Public dependency
+and build-artifact downloads are needed for a clean build.
+
+Accepted actions are `--help`, `--list-components`, `--export-selection`,
+`--detect`, `--default`, `--all`, `--select codex_cli`,
+`--reconfigure codex_cli`, and `--uninstall codex_cli`. `--home PATH` selects
+the target home. Discovery performs no build or installation. Uninstall checks
+the recorded digests before removing managed executables and retains user
+configuration. Source installation preserves the selected Git branch and
+requires the tracked Rust source to be unchanged. No packages are installed
+through sudo automatically; a sudo invocation forwards user work to `SUDO_USER`.
+
+Run `python3 scripts/install/check_install_fork.py` for isolated discovery,
+mocked Cargo/V8 installation of both binaries, repeat installation, rejection
+and uninstall checks. A complete native source build is a separate verification.
+The installer is prepared locally and remains unpublished until explicitly pushed.
