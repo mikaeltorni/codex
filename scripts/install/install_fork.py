@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,22 +14,69 @@ ROOT = Path(__file__).resolve().parents[2]
 BINARIES = ('codex', 'codex-code-mode-host')
 
 
+def parse_component_ids(text):
+    """Convert a complete component operand before selecting an operation.
+
+    Parameters: text - raw comma-separated component IDs, including an explicit empty selection.
+    Returns: a tuple of syntactically accepted IDs.
+    """
+    print(f'text={text!r}', file=sys.stderr)
+    result = tuple(text.split(',')) if text else ()
+    if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]*', identifier) for identifier in result):
+        raise argparse.ArgumentTypeError('expected comma-separated component identifiers')
+    print(result, file=sys.stderr)
+    return result
+
+
 def parse_arguments(arguments):
-    """Parse standalone component actions and the target home once.
-    Parameters: arguments - raw command line arguments.
-    Returns: typed action options and a resolved home path.
+    """Convert the entire standalone installer request once.
+
+    Parameters: arguments - raw command line strings.
+    Returns: the action selector, converted component tuple, resolved home Path and help text.
     """
     print(f'arguments={arguments!r}', file=sys.stderr)
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--home', type=lambda value: Path(value).expanduser().resolve(), default=Path.home())
+    parser = argparse.ArgumentParser(description=__doc__, add_help=False)
+    parser.add_argument('--home', type=lambda value: Path(value).expanduser().resolve(), default=Path.home().resolve())
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--help', '-h', action='store_true')
     for flag in ('list-components', 'export-selection', 'detect', 'default', 'all'):
         mode.add_argument('--'+flag, action='store_true')
     for flag in ('select', 'reconfigure', 'uninstall'):
-        mode.add_argument('--'+flag, choices=('codex_cli',))
-    result = parser.parse_args(arguments)
+        mode.add_argument('--'+flag, type=parse_component_ids, metavar='COMPONENTS')
+    options = parser.parse_args(arguments)
+    if options.help:
+        action, ids = 'help', ()
+    elif options.list_components:
+        action, ids = 'list', ()
+    elif options.export_selection:
+        action, ids = 'export', ()
+    elif options.detect:
+        action, ids = 'detect', ()
+    elif options.uninstall is not None:
+        action, ids = 'uninstall', options.uninstall
+    elif options.select is not None:
+        action, ids = 'install', options.select
+    elif options.reconfigure is not None:
+        action, ids = 'install', options.reconfigure
+    elif options.default or options.all:
+        action, ids = 'install', ('codex_cli',)
+    else:
+        action, ids = 'auto', ('codex_cli',)
+    result = action, ids, options.home, parser.format_help()
     print(result, file=sys.stderr)
     return result
+
+
+def validate_component_ids(ids):
+    """Require distinct supported fork components before building or removing files.
+
+    Parameters: ids - fully parsed component identifier tuple.
+    Returns: None for accepted selections, including an explicit empty tuple.
+    """
+    print(f'ids={ids!r}', file=sys.stderr)
+    if len(set(ids)) != len(ids) or any(identifier != 'codex_cli' for identifier in ids):
+        raise ValueError('unknown or duplicate component; use --list-components')
+    print(None, file=sys.stderr)
 
 
 def require_tools():
@@ -144,29 +192,58 @@ def detect_installation(home):
     return result
 
 
+def show_component_menu(home):
+    """Open the maintained shared menu with the native fork operations as callbacks.
+
+    Parameters: home - resolved target home for detection, building and removal.
+    Returns: None after accepted actions or cancellation.
+    """
+    print(f'home={home!r}', file=sys.stderr)
+    subprocess.run(['bash', str(ROOT/'scripts/install/component_menu.sh'), str(home)], check=True)
+    print(None, file=sys.stderr)
+
+
+def run_request(action, ids, home, help_text):
+    """Apply a converted fork query, selected component action or terminal menu.
+
+    Parameters: action - parsed selector; ids - converted component tuple; home - target home; help_text - parser-generated usage.
+    Returns: formatted query text, or None after an installation/removal/menu action.
+    """
+    print(f'action={action!r} ids={ids!r} home={home!r} help_text={help_text!r}', file=sys.stderr)
+    validate_component_ids(ids)
+    result = None
+    if action == 'help':
+        result = help_text
+    elif action == 'list':
+        result = 'codex_cli\tBuild this Codex fork and its Code Mode host\ton'
+    elif action == 'export':
+        result = json.dumps({'schema_version': 1, 'scope': 'standalone', 'repo': 'codex', 'components': {'codex_cli': {'on': 1}}})
+    elif action == 'detect':
+        installed = detect_installation(home)
+        result = 'codex_cli\t' + ('installed' if installed else 'absent')
+    elif action == 'uninstall':
+        if ids:
+            uninstall(home)
+    elif action == 'auto' and sys.stdin.isatty():
+        show_component_menu(home)
+    elif ids:
+        build_and_install(home)
+    print(result, file=sys.stderr)
+    return result
+
+
 def main(arguments):
-    """Route parsed discovery, menu and component actions.
-    Parameters: arguments - raw command line arguments.
-    Returns: zero for successful actions and two on validation/build failures.
+    """Forward one parsed request to its native/shared-menu operation.
+
+    Parameters: arguments - raw command line strings.
+    Returns: zero for successful queries/actions or two for rejected and failed operations.
     """
     print(f'arguments={arguments!r}', file=sys.stderr)
-    options = parse_arguments(arguments)
+    action, ids, home, help_text = parse_arguments(arguments)
     try:
-        if options.list_components:
-            print('codex_cli\tBuild this Codex fork and its Code Mode host\ton')
-        elif options.export_selection:
-            print(json.dumps({'components': {'codex_cli': {'on': 1}}}))
-        elif options.detect:
-            installed = detect_installation(options.home)
-            print('codex_cli\t'+('1' if installed else '0'))
-        elif options.uninstall:
-            uninstall(options.home)
-        elif any((options.select, options.reconfigure, options.default, options.all)) or not sys.stdin.isatty():
-            build_and_install(options.home)
-        else:
-            print('1. Build and install this Codex fork and Code Mode host\nq. Cancel')
-            if input('Selection [q]: ').strip() == '1':
-                build_and_install(options.home)
+        result = run_request(action, ids, home, help_text)
+        if result is not None:
+            print(result)
     except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
         print(error, file=sys.stderr)
         print(2, file=sys.stderr)
