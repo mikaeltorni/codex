@@ -1,9 +1,7 @@
 ---
 source: tui/src/app/tests.rs
-assertion_line: 8673
 expression: transcript
 ---
-
   /init - create an AGENTS.md file with instructions for Codex
   /status - show current session configuration
   /permissions - choose what Codex is allowed to do
@@ -13,9 +11,10 @@ expression: transcript
 
 › retained prompt
 
+  [Image #1]
+  [Image #2]
 
-
-› selected prompt [Image #1] [Image #1] [Image #2]
+› selected prompt [Image #1]
 
 
 • Conversation reverted to this point. File changes are unchanged.

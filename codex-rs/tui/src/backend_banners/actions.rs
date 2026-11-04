@@ -49,7 +49,10 @@ impl BannerAction {
 
 impl BackendBanner {
     /// Supply one plan recovery action without manufacturing an account banner payload.
+    /// Parameters: plan_type - account plan. Returns: an optional recovery selection.
     pub(crate) fn recovery_fallback_for_plan(plan_type: PlanType) -> Option<SelectionItem> {
+        #[cfg(test)]
+        println!("plan_type={plan_type:?}");
         let (action, label) = match plan_type {
             PlanType::Free | PlanType::Go | PlanType::Plus | PlanType::ProLite => (
                 BannerAction::OpenUrl(pricing_url(Some(plan_type))),
@@ -65,13 +68,22 @@ impl BackendBanner {
             | PlanType::Enterprise
             | PlanType::Edu
             | PlanType::EduPlus
-            | PlanType::EduPro => (
+            | PlanType::EduPro
+            | PlanType::Sci
+            | PlanType::SciPlus => (
                 BannerAction::NotifyOwner(AddCreditsNudgeCreditType::UsageLimit),
                 "Request increase",
             ),
-            PlanType::Pro | PlanType::ProMax | PlanType::Unknown => return None,
+            PlanType::Pro | PlanType::ProMax | PlanType::Unknown => {
+                #[cfg(test)]
+                println!("None");
+                return None;
+            }
         };
-        Some(action.selection_item(label.to_string()))
+        let result = Some(action.selection_item(label.to_string()));
+        #[cfg(test)]
+        println!("{}", result.is_some());
+        result
     }
 
     pub(super) fn resolve_action(&self, action: &str) -> Option<BannerAction> {

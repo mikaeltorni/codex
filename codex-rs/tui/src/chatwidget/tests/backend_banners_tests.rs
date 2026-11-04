@@ -654,8 +654,11 @@ async fn usage_wait_countdown_tick_preserves_selected_recovery_action() {
     assert!(events.try_recv().is_err());
 }
 
+/// Verify wait recovery choices for personal and workspace plans.
+/// Parameters: none. Returns: None.
 #[tokio::test]
 async fn usage_wait_identifies_personal_and_workspace_accounts() {
+    println!("parameters=none");
     for (plan, title, action, snapshot) in [
         (
             PlanType::Plus,
@@ -677,6 +680,18 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
         ),
         (
             PlanType::Team,
+            "Workspace usage limit reached",
+            Some("Request increase"),
+            "usage_wait_workspace",
+        ),
+        (
+            PlanType::Sci,
+            "Workspace usage limit reached",
+            Some("Request increase"),
+            "usage_wait_workspace",
+        ),
+        (
+            PlanType::SciPlus,
             "Workspace usage limit reached",
             Some("Request increase"),
             "usage_wait_workspace",
@@ -731,6 +746,7 @@ async fn usage_wait_identifies_personal_and_workspace_accounts() {
         ));
         assert!(events.try_recv().is_err());
     }
+    println!("None");
 }
 
 #[tokio::test]

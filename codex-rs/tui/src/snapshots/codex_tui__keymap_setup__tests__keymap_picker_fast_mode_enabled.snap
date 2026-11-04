@@ -1,12 +1,12 @@
 ---
 source: tui/src/keymap_setup.rs
-assertion_line: 904
+assertion_line: 970
 expression: "render_picker(params, 120)"
 ---
 
   Keymap
   All configurable shortcuts.
-  154 actions, 0 customized, 6 unbound.
+  156 actions, 0 customized, 6 unbound.
 
    All   Common   Customized (0)   Unbound (6)   App   Composer   Editor   Vim   Navigation   Agents   Approval      ›
 
@@ -23,6 +23,8 @@ expression: "render_picker(params, 120)"
   Global       - Toggle Fast Mode           unbound
   Global         Toggle Raw Output          alt-r
   Global         Toggle Side Conversation   ctrl-/
+  Global         Leader                     ctrl-x
+  Chat           Resume Goal                alt-shift-g
   Chat           Interrupt Turn             esc
   Chat           Decrease Reasoning Effort  alt-,, shift-down
   Chat           Increase Reasoning Effort  alt-., shift-up
@@ -31,10 +33,8 @@ expression: "render_picker(params, 120)"
   Chat           Edit Queued Message        shift-left, alt-up
   Chat           Prompt Stack Back          shift-right, alt-down
   Chat           Skip Question              ctrl-]
-  Chat           Resume Goal                alt-shift-g
   Chat           Toggle Voice               f8
-  Chat           Toggle Voice Mute          ctrl-x
-  Composer       Submit                     enter
-  Composer       Prepend Goal               alt-g
+  Chat           Open Presets               leader p (ctrl-x p)
+  Chat           Toggle Voice Mute          f9
 ↓
   left/right group · enter edit shortcut · * custom · - unbound · esc close
