@@ -126,8 +126,8 @@ session, or `codex <COMMAND> [OPTIONS]` for a CLI operation. Public commands are
 `agents`, `exec` (`e`), `review`, `login`, `logout`, `mcp`, `plugin`, `app-server`,
 `remote-control`, `completion`, `update`, `doctor`, `sandbox`, `debug`, `apply`
 (`a`), `resume`, `queue`, `archive`, `delete`, `migrate-rollouts`, `unarchive`,
-`fork`, `cloud` (`cloud-tasks`), `exec-server`, `features`, and `help`. The `app`
-command is available on macOS and Windows. Internal commands include
+`fork`, `cloud` (`cloud-tasks`), `exec-server`, `features`, `migrate-nfs-db`,
+and `help`. The `app` command is available on macOS and Windows. Internal commands include
 `tcp-tunnel`, `execpolicy`, `responses-api-proxy`, and `stdio-to-uds`.
 Use `codex <COMMAND> --help` for each command's operands and subcommands.
 
@@ -150,9 +150,9 @@ is the selected model.
 
 ### Checking the local deployment
 
-The local `main` source includes Codex 0.162.1, usage-limit recovery, Goal
-shortcuts, and the Reserve opt-out. Registered CX accounts share the installed
-Codex CLI and Code Mode host. The native setup repository selects the deployed
+The local `main` and `reserveMerge` sources include Codex 0.166.0, usage-limit
+recovery, Goal shortcuts, and the Reserve opt-out. Registered CX accounts share
+the installed Codex CLI and Code Mode host. The native setup repository selects the deployed
 Git ref independently and publishes both binaries together to the main, Qwen,
 OpenRouter, and NVIDIA harnesses. To install the integrated `main` source:
 
@@ -198,9 +198,13 @@ env -u NO_COLOR TERM=xterm-256color \
 ```
 
 Test-profile builds support isolated temporary home fixtures. The terminal
-variables preserve escape-sequence assertions. Final merge verification passed
-633 focused native checks, including generated schemas and the retained
-Reserve, Usage and Goal regressions. The complete workspace suite was not run.
+variables preserve escape-sequence assertions. The 0.166.0 integration passed
+355 focused feature checks, 11 schema and image-order checks, and two
+upgrade-notice checks. The complete workspace
+suite was not run. For direct Cargo builds, set `RUSTY_V8_ARCHIVE` and
+`RUSTY_V8_SRC_BINDING_PATH` to the checksum-verified artifacts described in
+[the V8 build instructions](third_party/v8/README.md); the setup installer
+resolves these artifacts automatically.
 
 ### Automatic GPT Reserve switching
 
