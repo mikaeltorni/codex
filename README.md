@@ -228,6 +228,42 @@ Restart the CLI and resume the same conversation after changing the setting.
 The saved regression runner is documented in
 [codex-rs/tui/reserve_switch_coverage.md](codex-rs/tui/reserve_switch_coverage.md).
 
+## Updating this custom fork from an official release
+
+Preserve official release ancestry and keep it distinguishable from unpublished
+fork work. Configure `upstream` as `https://github.com/openai/codex.git`; on a new
+clone, add it if absent:
+
+```shell
+git remote add -t main upstream https://github.com/openai/codex.git
+git config --add remote.upstream.fetch '+refs/tags/rust-v*:refs/remotes/upstream/releases/rust-v*'
+```
+
+Verify an existing remote's URL and fetch mappings before reusing them; add the
+release mapping only once. In the task worktree for a requested update, fetch
+the exact official tag into a retained remote-tracking ref, then merge it:
+
+```shell
+RELEASE_TAG=rust-v0.166.0
+git fetch --no-tags upstream "refs/tags/${RELEASE_TAG}:refs/remotes/upstream/releases/${RELEASE_TAG}"
+git merge --no-ff "refs/remotes/upstream/releases/${RELEASE_TAG}"
+```
+
+Use the requested release tag rather than blindly upgrading to the newest one.
+Resolve conflicts while retaining the custom features, verify them, and deliver
+the task branch into local `main`. Rebuild/install only when runtime sources
+changed. Neither command pushes the fork. Do not squash official releases or
+merge obsolete build branches only to retain their history; use archive tags
+or bundles for that purpose.
+
+Phrase Automation's pending-work counters subtract commits reachable from
+remote-tracking refs. Retaining `upstream/releases/<tag>` excludes upstream
+release commits without hiding unpublished custom changes. A tag fetched only
+under `refs/tags/` does not provide that distinction. Preserve the upstream
+release refs during cleanup and repeat the fetch-before-merge procedure for
+each subsequent release. The project-local [agent guidance](AGENTS.md) records
+the same workflow for future agents.
+
 ## Clean upstream PR branches
 
 The original feature-only heads are preserved as local review branches based
