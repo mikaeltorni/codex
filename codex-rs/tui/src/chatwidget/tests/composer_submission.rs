@@ -2934,15 +2934,15 @@ fn image_preparation_keeps_input_responsive_and_preserves_pending_input() {
     }
 }
 
-/// Submit CLI clipboard images after the complete goal text, preserving attachment order.
+/// Submit CLI clipboard images after ordinary prompt text, preserving attachment order.
 /// Parameters: none.
 /// Returns: None.
 #[tokio::test]
-async fn ic_images_submit_initial_goal_text_before_attachments() {
+async fn ic_images_submit_initial_prompt_text_before_attachments() {
     println!("parameters=none");
     let (mut chat, _events, mut operations) = make_chatwidget_manual(None).await;
     chat.thread_id = Some(ThreadId::new());
-    let text = "/goal inspect screenshot, then explain café 中";
+    let text = "inspect screenshot, then explain café 中";
     let images = vec![
         PathBuf::from("/tmp/first.png"),
         PathBuf::from("/tmp/second.png"),

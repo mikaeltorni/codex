@@ -434,3 +434,87 @@ async fn voice_shortcut_cancels_startup_submission_before_app_dispatch() -> colo
     server.shutdown().await?;
     Ok(())
 }
+
+/// Dispatch a startup goal through the native goal path with its images.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn startup_goal_creates_goal_draft_with_and_without_image() {
+    println!("parameters=none");
+    for with_image in [false, true] {
+        let (mut chat, mut events, mut ops) = make_chatwidget_manual(None).await;
+        chat.set_feature_enabled(Feature::Goals, true);
+        let thread_id = ThreadId::new();
+        chat.thread_id = Some(thread_id);
+        let images = if with_image {
+            vec![PathBuf::from("/tmp/goal.png")]
+        } else {
+            Vec::new()
+        };
+        chat.initial_user_message = create_initial_user_message(
+            Some("/goal inspect screenshot".into()),
+            images.clone(),
+            Vec::new(),
+        );
+        chat.submit_initial_user_message_if_pending();
+        let event = std::iter::from_fn(|| events.try_recv().ok())
+            .find(|event| matches!(event, AppEvent::SetThreadGoalDraft { .. }))
+            .expect("initial /goal must create a native goal draft");
+        let AppEvent::SetThreadGoalDraft {
+            thread_id: owner,
+            draft,
+            ..
+        } = event
+        else {
+            unreachable!()
+        };
+        assert_eq!(owner, thread_id);
+        assert_eq!(draft.objective, "inspect screenshot");
+        assert_eq!(
+            draft
+                .local_images
+                .iter()
+                .map(|image| image.path.clone())
+                .collect::<Vec<_>>(),
+            images
+        );
+        assert_no_submit_op(&mut ops);
+    }
+    println!("None");
+}
+
+/// Keep a startup goal queued until the thread is ready.
+/// Parameters: none.
+/// Returns: None.
+#[tokio::test]
+async fn startup_goal_waits_for_thread_before_dispatch() {
+    println!("parameters=none");
+    let (mut chat, mut events, mut ops) = make_chatwidget_manual(None).await;
+    chat.set_feature_enabled(Feature::Goals, true);
+    chat.initial_user_message = create_initial_user_message(
+        Some("/goal complete the task".into()),
+        Vec::new(),
+        Vec::new(),
+    );
+    chat.submit_initial_user_message_if_pending();
+    assert_eq!(chat.input_queue.queued_user_messages.len(), 1);
+    assert_no_submit_op(&mut ops);
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.maybe_send_next_queued_input();
+    let event = std::iter::from_fn(|| events.try_recv().ok())
+        .find(|event| matches!(event, AppEvent::SetThreadGoalDraft { .. }))
+        .expect("queued startup goal must dispatch after thread starts");
+    let AppEvent::SetThreadGoalDraft {
+        thread_id: owner,
+        draft,
+        ..
+    } = event
+    else {
+        unreachable!()
+    };
+    assert_eq!(owner, thread_id);
+    assert_eq!(draft.objective, "complete the task");
+    assert_no_submit_op(&mut ops);
+    println!("None");
+}
