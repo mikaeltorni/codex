@@ -148,9 +148,16 @@ impl ChatWidget {
         self.suppress_initial_user_message_submit = suppressed;
     }
 
+    /// Submit startup input, dispatching native goal commands through the slash queue.
+    /// Parameters: self - the active chat widget.
+    /// Returns: None.
     pub(crate) fn submit_initial_user_message_if_pending(&mut self) {
+        #[cfg(test)]
+        println!("self={self:p}");
         if self.suppress_initial_user_message_submit || self.input_queue.rate_limit_recovery_pending
         {
+            #[cfg(test)]
+            println!("None");
             return;
         }
         #[cfg(any(target_os = "windows", test))]
@@ -158,12 +165,16 @@ impl ChatWidget {
             && self.windows_sandbox_host != crate::app::WindowsSandboxHost::Remote
             && self.windows_sandbox_config.requirements.is_none()
         {
+            #[cfg(test)]
+            println!("None");
             return;
         }
         #[cfg(any(target_os = "windows", test))]
         if self.windows_sandbox_host == crate::app::WindowsSandboxHost::Local
             && self.elevated_windows_sandbox_setup_required()
         {
+            #[cfg(test)]
+            println!("None");
             return;
         }
         #[cfg(any(target_os = "windows", test))]
@@ -175,12 +186,16 @@ impl ChatWidget {
             if let Some(user_message) = self.initial_user_message.take() {
                 self.restore_user_message_to_composer(user_message);
             }
+            #[cfg(test)]
+            println!("None");
             return;
         }
         if self.blocks_direct_input {
             if let Some(user_message) = self.initial_user_message.take() {
                 self.restore_user_message_to_composer(user_message);
             }
+            #[cfg(test)]
+            println!("None");
             return;
         }
         if let Some(user_message) = self.initial_user_message.take() {
@@ -218,13 +233,25 @@ impl ChatWidget {
                     Some(placeholder),
                 ));
             }
-            if self.submit_user_message_with_history_record(
+            let is_goal = crate::bottom_pane::prompt_args::parse_slash_name(&user_message.text)
+                .is_some_and(|(name, _, _)| name == "goal");
+            if is_goal {
+                if self.queue_user_message_with_options(
+                    user_message,
+                    QueuedInputAction::ParseSlash,
+                    Vec::new(),
+                ) {
+                    self.bottom_pane.record_local_user_message_history(entry);
+                }
+            } else if self.submit_user_message_with_history_record(
                 user_message,
                 UserMessageHistoryRecord::UserMessageText,
             ) {
                 self.bottom_pane.record_local_user_message_history(entry);
             }
         }
+        #[cfg(test)]
+        println!("None");
     }
 
     pub(super) fn pop_next_queued_user_message(
