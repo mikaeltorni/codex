@@ -85,11 +85,11 @@ Attach local images to the interactive CLI with `--image` (repeatable):
 codex --image screenshot.png -- '/goal inspect this screenshot'
 ```
 
-Codex sends the prompt text before its image attachments. Image labels appear
-at the end of the prompt's final logical line, such as
-`/goal inspect this screenshot [Image #1]`, with normal terminal-width wrapping.
-This also applies to images passed by ACC's `ca -ic "inspect this screenshot"`.
-The `/goal` prefix stays at the start of the submitted text.
+An initial `/goal` prompt creates a native active Goal before work begins. Codex
+copies each attached image into its goal attachments and includes a file reference
+in the objective. This also applies to ACC's `ca -ic "inspect this screenshot"`.
+Ordinary prompts send their text before the image attachments. Existing active
+goals require confirmation before replacement.
 
 ## Goal shortcuts
 
