@@ -198,7 +198,7 @@ impl ChatWidget {
             println!("None");
             return;
         }
-        if let Some(user_message) = self.initial_user_message.take() {
+        if let Some(mut user_message) = self.initial_user_message.take() {
             // Command-line input bypasses the composer, which normally records local recall.
             let mut entry = HistoryEntry {
                 text: user_message.text.clone(),
@@ -236,6 +236,13 @@ impl ChatWidget {
             let is_goal = crate::bottom_pane::prompt_args::parse_slash_name(&user_message.text)
                 .is_some_and(|(name, _, _)| name == "goal");
             if is_goal {
+                for image in &mut user_message.local_images {
+                    if !user_message.text_elements.iter().any(|element| {
+                        element.placeholder(&user_message.text) == Some(image.placeholder.as_str())
+                    }) {
+                        image.placeholder.clear();
+                    }
+                }
                 if self.queue_user_message_with_options(
                     user_message,
                     QueuedInputAction::ParseSlash,
