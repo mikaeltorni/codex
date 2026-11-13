@@ -470,6 +470,12 @@ async fn startup_goal_creates_goal_draft_with_and_without_image() {
         };
         assert_eq!(owner, thread_id);
         assert_eq!(draft.objective, "inspect screenshot");
+        if with_image {
+            assert!(
+                draft.local_images[0].placeholder.is_empty(),
+                "CLI image without a text element must be retained by goal materialization"
+            );
+        }
         assert_eq!(
             draft
                 .local_images
