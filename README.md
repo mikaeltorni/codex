@@ -264,30 +264,6 @@ release refs during cleanup and repeat the fetch-before-merge procedure for
 each subsequent release. The project-local [agent guidance](AGENTS.md) records
 the same workflow for future agents.
 
-## Clean upstream PR branches
-
-The original feature-only heads are preserved as local review branches based
-on `rust-v0.162.1`. Their changes exclude the local `main` integration history:
-
-| Feature | Local PR branch | Changes since the release |
-| --- | --- | --- |
-| Reserve opt-out | `pr/codex_optional-reserve-1621` | One feature commit, six files. |
-| Usage-limit recovery | `pr/codex_usage-limit-auto-resume-1621` | Feature plus documentation commits, 84 files. |
-| Goal shortcuts | `pr/codex_goal-shortcuts-1621` | Feature plus documentation commits, 23 files. |
-
-Review each feature against the release before publishing:
-
-```shell
-git diff rust-v0.162.1...pr/codex_optional-reserve-1621
-git diff rust-v0.162.1...pr/codex_usage-limit-auto-resume-1621
-git diff rust-v0.162.1...pr/codex_goal-shortcuts-1621
-```
-
-The `feat/codex_*pr-1621` branches contain conflict resolutions against the
-fork's `main`; all three have been merged into local `main`. The `pr/` branches
-above retain the separate upstream review diffs. No branch was pushed by this
-integration task.
-
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
