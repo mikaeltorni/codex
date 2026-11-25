@@ -1,4 +1,22 @@
-> Part of [mt_stack](https://github.com/mikaeltorni/mt_stack), a Linux setup stack of independently installable projects.
+# Codex CLI Fork — Goal shortcuts and Code Mode
+
+Codex CLI Fork is a terminal coding agent based on OpenAI Codex, with native Goal shortcuts and a source installer for Codex and the Code Mode host.
+
+[![Last commit](https://img.shields.io/github/last-commit/mikaeltorni/codex)](https://github.com/mikaeltorni/codex/commits/main)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/mikaeltorni/codex)](https://github.com/mikaeltorni/codex/graphs/commit-activity)
+[![Issues](https://img.shields.io/github/issues/mikaeltorni/codex)](https://github.com/mikaeltorni/codex/issues)
+
+[Fork source install](#standalone-fork-installer-and-selection-menu) · [Goal shortcuts](#goal-shortcuts) · [Fork FAQ](#codex-cli-fork-faq) · [Upstream quickstart](#upstream-codex-cli-quickstart)
+
+From a checkout of this fork, list its component before starting the native build:
+
+```bash
+bash install.sh --list-components
+```
+
+The listing includes `codex_cli`, which builds both `codex` and
+`codex-code-mode-host`. The [Linux CLI Setup guide](https://github.com/mikaeltorni/linux_codex_claude_code_setup#linux-codex-and-claude-code-installation)
+describes account setup and source selection on Linux.
 
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 <p align="center">
@@ -9,13 +27,11 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 </br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
 </br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
 
-[![Last commit](https://img.shields.io/github/last-commit/mikaeltorni/codex)](https://github.com/mikaeltorni/codex/commits/main)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/mikaeltorni/codex)](https://github.com/mikaeltorni/codex/graphs/commit-activity)
-[![Issues](https://img.shields.io/github/issues/mikaeltorni/codex)](https://github.com/mikaeltorni/codex/issues)
-
 ---
 
-## Quickstart
+## Upstream Codex CLI quickstart
+
+These package and installer commands install OpenAI's upstream Codex CLI.
 
 ### Installing and running Codex CLI
 
@@ -306,7 +322,36 @@ through sudo automatically; a sudo invocation forwards user work to `SUDO_USER`.
 Run `python3 scripts/install/check_install_fork.py` for isolated discovery,
 mocked Cargo/V8 installation of both binaries, repeat installation, rejection
 and uninstall checks. A complete native source build is a separate verification.
-The installer is prepared locally and remains unpublished until explicitly pushed.
+
+## Codex CLI fork FAQ
+
+### Which command installs this fork?
+
+Run `bash install.sh --select codex_cli` from this repository with the listed
+native build prerequisites. The source installer builds the currently checked
+out revision with locked Cargo inputs.
+
+### Where does the source installer put the executables?
+
+It installs `codex` and `codex-code-mode-host` under `~/.local/bin/`.
+Check `command -v codex` to verify which executable your shell resolves.
+
+### How do I start a Goal without submitting my draft?
+
+Press Alt+G in the native TUI composer to add or remove the `/goal` prefix.
+This leaves your draft unsubmitted and preserves any attachments.
+
+### How do I resume an eligible Goal from the keyboard?
+
+Press Alt+Shift+G in the native composer to resume a paused, blocked, or
+usage-limited Goal. Use `/keymap debug` to check how your terminal reports
+the shortcut if the key does not arrive as expected.
+
+### How can I verify installer behavior without a native build?
+
+Run `python3 scripts/install/check_install_fork.py` from the checkout.
+Its isolated fixtures verify component discovery, repeat installation,
+selection, and removal with a mocked toolchain.
 
 ## Installer lifecycle
 
